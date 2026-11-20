@@ -59,10 +59,9 @@ console.log('   real counters now:', JSON.stringify({ done: real.events_done, se
 // a demo run must not change them
 const before = (await api('/api/overview')).counters;
 const jr0 = (await api('/api/journeys')).total;
-await ev(`document.querySelector('[data-testid="event-picker"] [role=combobox]').dispatchEvent(new MouseEvent('mousedown',{bubbles:true}))`);
-await sleep(400); await ev(`document.querySelector('li[data-event="demo-01"]').click()`); await sleep(600);
-await ev("document.querySelector('[data-testid=run]').click()");
-check(await waitFor("/Message sent|Not allowed|Waiting/.test(document.querySelector('[data-testid=outcome]')?.innerText || '')", 30000), 'the demo event runs in the graph');
+await fetch(`${API}/api/scenario/reset`, { method: 'POST' });
+await fetch(`${API}/api/scenario/demo-01/run?pace_ms=0`, { method: 'POST' });
+check(await (async () => { for (let i = 0; i < 120; i++) { if ((await api('/api/scenario')).done === 1) return true; await sleep(500); } return false; })(), 'the demo event runs (Workflow Studio)');
 await sleep(1500);
 const demo = await api('/api/scenario');
 check(demo.done === 1, 'the walkthrough recorded its run');

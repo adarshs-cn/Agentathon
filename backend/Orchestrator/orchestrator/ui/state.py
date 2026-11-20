@@ -62,6 +62,7 @@ class DemoState:
         self.mode = mode
         self.scenario_rows: list[dict] = []
         self.runs = RunManager(self)
+        self.narrator = None                       # set by the server for the Workflow Studio (trace pad); None in tests
         self.lock = threading.RLock()
         self.sup: Supervisor | None = None
         self.audit = {"violations": 0, "checked": 0, "ran": False, "at": 0.0, "detail": []}

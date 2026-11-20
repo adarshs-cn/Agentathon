@@ -132,13 +132,25 @@ def create_dashboard_app(state: DemoState, demo: DemoState | None = None) -> Fas
         return demo_views.scenario(demo.reader)
 
     @app.post("/api/scenario/{event_id}/run")
-    def scenario_run(event_id: str, pace_ms: int = Query(650, ge=0, le=3000)):
+    def scenario_run(event_id: str, pace_ms: int = Query(1100, ge=0, le=4000)):
         if demo.mode != "scenario":
             raise HTTPException(400, "the server is in day mode")
         try:
             return demo.runs.start(event_id, pace_ms)
         except RunError as e:
             raise HTTPException(e.status, e.message)
+
+    @app.get("/api/graph")
+    def graph_shape():
+        """Nodes and edges of the compiled LangGraph the supervisor really runs (drawn by the Workflow Studio)."""
+        from orchestrator.ui.narrator import LLM_NODES, NODE_WORDS
+        g = demo.sup.graph.get_graph()
+        nodes = [{"id": n, "label": NODE_WORDS.get(n, (n, ""))[0], "what": NODE_WORDS.get(n, (n, ""))[1],
+                  "llm": n in LLM_NODES, "kind": "terminal" if n.startswith("__") else
+                  ("channel" if n in ("whatsapp", "email", "voice") else "node")} for n in g.nodes]
+        edges = [{"from": e.source, "to": e.target, "conditional": bool(e.conditional)} for e in g.edges]
+        nar = demo.narrator
+        return {"nodes": nodes, "edges": edges, "narrator": "llm" if (nar and nar.llm is not None) else ("rules" if nar else "off")}
 
     @app.get("/api/scenario/{event_id}/steps")
     def scenario_steps(event_id: str):

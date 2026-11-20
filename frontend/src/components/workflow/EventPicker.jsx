@@ -1,5 +1,9 @@
 import { FormControl, InputLabel, ListItemText, MenuItem, Select } from '@mui/material';
-import { optionLabel } from './logic';
+// "3 · Payment overdue, 31 to 60 days · Message sent" (or "· locked" while its first half has not run)
+function optionLabel(item) {
+  const tail = item.status === 'done' ? ` · ${item.outcome_label}` : item.available ? '' : ' · locked';
+  return `${item.seq} · ${item.label}${tail}`;
+}
 
 export default function EventPicker({ items, value, onChange, disabled }) {
   return (

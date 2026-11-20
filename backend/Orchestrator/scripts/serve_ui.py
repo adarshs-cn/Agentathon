@@ -15,6 +15,7 @@ import uvicorn
 from orchestrator.config import DATA_DIR, load_env
 from orchestrator.llm.deepseek import build_advisor
 from orchestrator.ui.app import create_dashboard_app
+from orchestrator.ui.narrator import build_narrator
 from orchestrator.ui.state import DemoState
 
 DEFAULT = DATA_DIR / "portfolio" / "Multi_Agent_Supervisor_Dataset"
@@ -48,6 +49,8 @@ def main():
               f"pool of {state.monitor.status()['pool_size']} borrowers")
     else:
         state = demo = DemoState(a.data_dir, a.dataset, a.events, a.seed, a.faults, advisor, mode=a.mode)
+    demo.narrator = build_narrator(advisor)          # the Workflow Studio trace pad (LLM explains; rules decide)
+    print(f"workflow studio narration: {'LLM + rules' if demo.narrator.llm else 'rules only'}")
     demo.runner.control("speed", {"speed": a.speed})
     if a.autoplay and a.mode == "day":
         state.runner.control("play")

@@ -26,8 +26,20 @@ press play) and `--mode scenario` (walkthrough only).
 
 ## How it works
 
-**Two separate databases.** The *Workflow walkthrough* on the Overview (15 demo events, Run button, graph animation) runs on its own
-database. It explains the workings and can be reset at any time; it never touches the numbers, runs, alerts or accounts.
+**Two separate databases.** The *Workflow Studio* (15 demo scenarios run through the real graph) runs on its own database. It
+explains the workings and can be reset at any time; it never touches the numbers, runs, alerts or accounts.
+
+**Workflow Studio.** Draws the compiled LangGraph (14 steps, 25 connections, read from `GET /api/graph`). Pick a scenario and press
+*Run demo*: the camera zooms in on each step as it works (about 1.9x, and the step itself grows), steps not reached yet fade out, the
+travelled edges glow and a pulse runs along the current one. A trace pad streams what the step is doing. Five steps (validate_event,
+route, assign, monitor, recover; marked AI) are explained by the LLM (DeepSeek via the Sarvam gateway): the model gets the derived
+facts and the decision the rules already made, and streams its reasoning; the others stream their rule check. The rules always
+decide. The LLM never sees a name, phone, borrower id or account id. If the model fails, that step shows its rule check instead.
+Each LLM answer is held to at most two short sentences (what was decided, and the main reason with its rule id); the stream is
+cut after the second sentence. Words appear at reading speed (Normal ~90 ms, Slow ~160 ms per word) and the next step only starts
+once the trace has finished and had a moment on screen. Every stream is saved with the run: after a run, hovering a step enlarges
+it and shows its saved trace, clicking pins it (click again or the empty canvas to unpin); *Replay* re-types the saved traces
+without calling the model again. The live monitor never calls the LLM; narration exists only on the Workflow Studio's demo database. `MT02_NARRATOR=rules` turns the LLM narration off.
 
 **The live monitor.** A background worker that runs whenever the server runs (not tied to anyone being logged in). It watches a fixed
 pool of 15 real borrowers. Inside the contact window (the policy's hard window, rule R007, 08:00-19:00; override with
@@ -42,7 +54,7 @@ it stopped. Pause or resume it from the header. Settings: `MT02_MONITOR_EVERY_MI
 alert but leaves it unread. The bell shows the number of unread alerts; clicking it opens a small panel listing them (each with
 **Mark as read** and **View run**). Marking read removes it from the panel and the count. Read state is saved in the database.
 
-**Navigation.** *Journey Supervisor*: Overview, Journey Runs (every finished real run, with fault and recovery), Decision Log.
+**Navigation.** *Journey Supervisor*: Overview (the six live tiles), Workflow Studio, Journey Runs (every finished real run, with fault and recovery), Decision Log.
 *Loan Management*: Accounts.
 
 ## Where the data comes from
@@ -52,7 +64,8 @@ through a second read-only connection. Nothing is mocked: the same LangGraph run
 
 | Page | What it shows | Tables |
 |---|---|---|
-| Overview | six headline tiles (real runs only), then the demo walkthrough: event picker, live graph, phone preview, step log | `event_queue`, `decision_log`, `contact_log` (live); `demo_event`, `run_step` (demo) |
+| Overview | six headline tiles (real runs only); each opens the rows behind it | `event_queue`, `decision_log`, `contact_log` |
+| Workflow Studio | the compiled LangGraph, a demo scenario run step by step with zoom and a streamed trace pad (LLM for five steps) | `demo_event`, `run_step` (demo database) |
 | Journey Runs | one row per finished real run: borrower, event, channel, owner after, outcome, fault and recovery, duration | `journey_run` |
 | Decision Log | every decision with its reason and the D12 rule ids; filters live in the URL | `event_queue`, `decision_log` |
 | Accounts | all 20,000 accounts, server-side filter / sort / paging, live owner and last contact; a row opens the borrower trace | `ds_account`, `ds_person`, `contact_log`, `ds_history` |

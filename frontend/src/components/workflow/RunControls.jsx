@@ -3,7 +3,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ReplayIcon from '@mui/icons-material/Replay';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 
-export default function RunControls({ item, running, resetting, onRun, onReplay, onReset, pace, onPace }) {
+export default function RunControls({ item, running, resetting, onRun, onReplay, onReset, pace, onPace, runLabel = 'Run' }) {
   const done = item?.status === 'done';
   const locked = item && !item.available;
   return (
@@ -16,7 +16,7 @@ export default function RunControls({ item, running, resetting, onRun, onReplay,
         <Tooltip title={locked ? item.why_unavailable : ''}>
           <span>
             <Button variant="contained" color="primary" startIcon={running ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />} onClick={onRun} disabled={!item || running || locked} data-testid="run">
-              {resetting ? 'Resetting…' : running ? 'Running…' : 'Run'}
+              {resetting ? 'Resetting…' : running ? 'Running…' : runLabel}
             </Button>
           </span>
         </Tooltip>

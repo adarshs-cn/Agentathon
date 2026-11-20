@@ -9,10 +9,11 @@ import {
 } from '@mui/material';
 import TowerControlIcon from '@mui/icons-material/CellTower';
 import ViewListIcon from '@mui/icons-material/ViewListOutlined';
+import AccountTreeIcon from '@mui/icons-material/AccountTreeOutlined';
 import HistoryIcon from '@mui/icons-material/History';
 import ListAltIcon from '@mui/icons-material/ListAltOutlined';
 import { tokens } from '../theme/muiTheme';
-import { OVERVIEW_TITLE } from '../config/labels';
+import { OVERVIEW_TITLE, STUDIO_TITLE } from '../config/labels';
 import MonitorPill from '../components/MonitorPill';
 import SimClockMini from '../components/SimClockMini';
 import NotificationBell, { FaultToast } from '../components/NotificationBell';
@@ -22,6 +23,7 @@ const NAV_GROUPS = [
     module: 'Journey Supervisor',
     items: [
       { to: '/', label: OVERVIEW_TITLE, icon: TowerControlIcon, end: true },
+      { to: '/studio', label: STUDIO_TITLE, icon: AccountTreeIcon },
       { to: '/runs', label: 'Journey Runs', icon: HistoryIcon },
       { to: '/decisions', label: 'Decision Log', icon: ListAltIcon },
     ],

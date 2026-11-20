@@ -153,7 +153,8 @@ borrowers plus the walkthrough on its own database; `--mode day` gives the old s
 | `state.py` | one database's state: the supervisor, a read-only connection, the background audit; modes `live`, `scenario`, `day`; reopens saved data |
 | `monitor.py` | the live monitor: picks the pool of 15, appends due events and runs them inside the contact window, pause/resume, status |
 | `journeys.py` | Journey Runs rows and the notification bell (unread alerts, mark as read, the alert wording) |
-| `scenario.py`, `run.py`, `demo_views.py` | the 15-event walkthrough, running one event live, its tile-style drawers |
+| `scenario.py`, `run.py`, `demo_views.py` | the 15 demo scenarios, running one live (node start/trace/end stream), the tile drawers |
+| `narrator.py` | the Workflow Studio trace pad: rule-check text for every node, LLM explanation for five (derived facts only), fallback |
 | `events.py` | turns decision-log rows into the eight event types the UI draws |
 | `accounts.py` | the accounts grid (server-side filter/sort/paging), search, one borrower's state and "what would happen now" |
 | `views.py` | overview numbers, faults, agents, ownership, budgets, decisions, rules, a borrower's trace |

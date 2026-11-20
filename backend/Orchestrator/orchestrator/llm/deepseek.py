@@ -67,6 +67,20 @@ class DeepSeekAdvisor:
             return None, None
 
 
+    def stream(self, prompt: str, timeout: float = 8.0, max_tokens: int = MAX_TOKENS):
+        """Stream a narration: yields ("think", text) for the model's reasoning and ("say", text) for its answer.
+        Used only by the Workflow Studio narrator, which explains decisions the rules already made. The budget covers the
+        hidden reasoning too: at 700 tokens the answer was cut off on the larger nodes (monitor), so it uses MAX_TOKENS."""
+        from orchestrator.ui.narrator import iter_sse
+        payload = {"model": self.model, "temperature": 0.3, "max_tokens": max_tokens, "reasoning_effort": "low",
+                   "stream": True, "messages": [{"role": "user", "content": prompt}]}
+        req = urllib.request.Request(
+            self.url, data=json.dumps(payload).encode(), method="POST",
+            headers={"api-subscription-key": self._key, "Content-Type": "application/json"})
+        with self._open(req, timeout=timeout) as r:
+            yield from iter_sse(r)
+
+
 def build_advisor() -> Optional[DeepSeekAdvisor]:
     """An advisor if a key is configured, else None (the monitor then uses rules only)."""
     load_env()

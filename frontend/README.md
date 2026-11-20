@@ -36,16 +36,13 @@ src/components/*           shared, themed building blocks
 
 ## End-to-end test (real Chrome, real clicks)
 
-With the API (`:8001`) and the UI (`:5173`) running (`../run_demo.sh`):
-
-    node e2e/overview.mjs <screenshot-dir> 1440 900      # the walkthrough graph (needs :8001 + :5173)
+    node e2e/studio.mjs <dir> 1440 900                   # Workflow Studio: graph, zoom, trace pad, hover (API :8002, UI :5175)
     node e2e/live.mjs <dir> 1440 900                     # live monitor + demo isolation (API :8002, UI :5175)
     node e2e/notify.mjs <dir> 1440 900                   # alerts, bell panel, mark as read (API :8002, UI :5175)
 
-`live.mjs` and `notify.mjs` expect a throwaway pair of servers on other ports so they never touch your data:
+`studio.mjs`, `live.mjs` and `notify.mjs` expect a throwaway pair of servers on other ports so they never touch your data:
 
     cd ../backend/Orchestrator && MT02_CORS=http://127.0.0.1:5175 .venv/bin/python -m scripts.serve_ui --port 8002 --faults public --data-dir /tmp/mt02/ui
     VITE_API_BASE_URL=http://localhost:8002 npx vite --host 127.0.0.1 --port 5175
 
-(`overview.mjs` also honours `E2E_API` / `E2E_UI`.) `overview.mjs` runs events 1, 8 and 13 through the graph, checks the stations activate in graph order and each edge lights, the hover shows
-exactly three facts, the phone shows the message, tiles open in place, Replay, the locked second request, reduced motion and Reset.
+`studio.mjs` runs scenario 13 (agent crash + recovery) with the real LLM: it checks the graph matches the compiled LangGraph, the camera follows each step, unreached steps fade, every step streams into the trace pad, the AI steps were explained by the LLM, and hover shows the saved trace. Set `STUDIO_EVENT=demo-01` for another scenario.

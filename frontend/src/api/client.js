@@ -35,6 +35,7 @@ export const api = {
     request(`/api/simulation/${action}`, { method: 'POST', body: JSON.stringify(body || {}) }),
   rules: () => request('/api/rules'),
   simulation: () => request('/api/simulation'),
+  graph: () => request('/api/graph'),
   scenario: () => request('/api/scenario'),
   scenarioRun: (id, paceMs) => request(`/api/scenario/${id}/run?pace_ms=${paceMs}`, { method: 'POST' }),
   scenarioSteps: (id) => request(`/api/scenario/${id}/steps`),

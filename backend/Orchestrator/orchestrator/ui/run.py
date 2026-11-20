@@ -33,7 +33,7 @@ class RunManager:
 
     # ---------------------------------------------------------------- stream
     def subscribe(self) -> queue.Queue:
-        q: queue.Queue = queue.Queue(maxsize=500)
+        q: queue.Queue = queue.Queue(maxsize=20000)
         self._subs.append(q)
         return q
 
@@ -95,9 +95,11 @@ class RunManager:
                 return
             if phase == "start":
                 owner["seq"] += 1
+                nar = self.state.narrator
                 self._emit("step", {"run_id": run["run_id"], "seq": owner["seq"], "node": node,
                                     "station": reasons.station_of(node) if node != "close_event" else "done",
-                                    "phase": "start", "owner_before": owner["now"]})
+                                    "phase": "start", "owner_before": owner["now"],
+                                    "llm": bool(nar and nar.uses_llm(node))})
                 if run["pace_ms"]:
                     time.sleep(run["pace_ms"] / 1000)
                 return
@@ -112,15 +114,30 @@ class RunManager:
                 owner["now"] = before
             ids = out.get("rule_ids") or (merged.get("guard") or {}).get("rule_ids") or d.get("rule_ids") or []
             station = reasons.station_of(node, out)
+            trace = None
+            nar = self.state.narrator
+            if nar is not None:                       # stream the trace pad while the node is still shown as working
+                seq = owner["seq"]
+
+                def emit(kind: str, text: str, _seq=seq, _node=node) -> None:
+                    self._emit("trace", {"run_id": run["run_id"], "seq": _seq, "node": _node, "kind": kind, "text": text})
+                try:
+                    # pacing: words appear at a reading speed tied to the chosen pace; after the trace, a pause to read it
+                    word = run["pace_ms"] / 1000 * 0.08 if run["pace_ms"] else 0
+                    trace = nar.narrate(node, db, merged, emit, info.get("ms"), word_delay_s=word)
+                    if run["pace_ms"]:
+                        time.sleep(run["pace_ms"] / 1000 * 0.9)
+                except Exception as e:  # noqa: BLE001 - narration must never break a run
+                    trace = {"source": "error", "think": "", "text": repr(e)}
             rec = {"run_id": run["run_id"], "seq": owner["seq"], "node": node, "station": station, "phase": "end",
                    "did": did, "label": label, "owner_before": before, "owner_after": owner["now"],
                    "ms": round(info.get("ms") or 0, 2), "rule_ids": ids,
-                   "stop": bool(out) and node != "close_event"}
+                   "stop": bool(out) and node != "close_event", "trace": trace}
             db.execute("INSERT OR REPLACE INTO run_step(event_id, seq, node, station, ms, owner_before, owner_after, did, "
-                       "label, rule_ids, data) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                       "label, rule_ids, data, trace) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                        (eid, owner["seq"], node, station, rec["ms"], before, owner["now"], did, label, json.dumps(ids),
                         json.dumps({"outcome": out or None, "fault": merged.get("fault"), "recovery": merged.get("recovery")},
-                                   default=str)))
+                                   default=str), json.dumps(trace) if trace else None))
             self._emit("step", rec)
 
         ctx.node_listeners.append(listener)
@@ -154,5 +171,6 @@ class RunManager:
             d = dict(r)
             d["rule_ids"] = json.loads(d["rule_ids"] or "[]")
             d["data"] = json.loads(d["data"]) if d["data"] else None
+            d["trace"] = json.loads(d["trace"]) if d.get("trace") else None
             out.append(d)
         return out

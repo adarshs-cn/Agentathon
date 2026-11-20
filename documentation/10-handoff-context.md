@@ -4,8 +4,9 @@ Written for another model (or person) picking this project up cold. It says what
 decided and why, how to run and test it, and what is still open. Where this file and an older doc disagree, **this file is
 newer**; documents 01-09 hold the original plans and some of them (for example the navigation in 03 and 07) are superseded.
 
-Date of this snapshot: 2026-11-20. Branch `main`, remote `adarshs-cn/Agentathon` (public). Last feature commit: "Live monitor,
-separate demo database, notification panel".
+Date of this snapshot: 2026-11-20. Branch `main`, remote `adarshs-cn/Agentathon` (public). Last pushed commit: "Live monitor,
+separate demo database, notification panel" (`e9f2a36`); the handoff doc commit (`99e4580`) is local. The **Workflow Studio**
+work (section 14, steps 9-10) is in the working tree, tested, **not yet committed**. Section 14 is the step-by-step progress log.
 
 ---
 
@@ -69,14 +70,15 @@ Supervisor-Agent-Orchestration/
 | `state.py` | `DemoState(data_dir, dataset_dir, events, seed, faults, advisor, mode, autostart)`. Modes: **`live`** (real monitored side), **`scenario`** (the 15-event walkthrough), **`day`** (old simulated day on a clock). Builds or reopens the SQLite DB, a read-only reader connection, background audit thread. `_reopen()` keeps saved data across restarts for live/scenario. |
 | `monitor.py` | `LiveMonitor` + `setup_pool()`; see section 6. |
 | `scenario.py` | the 15 walkthrough events (`SPECS`), picks real borrowers from the dataset, stages their data, publishes events `demo-01..15`. |
-| `run.py` | `RunManager`: runs ONE demo event live and streams node start/end as SSE; stores `run_step` rows for hover/Replay. |
+| `run.py` | `RunManager`: runs ONE demo event live and streams node start, trace pieces and end as SSE; stores `run_step` rows (with the saved `trace`) for hover/Replay. |
+| `narrator.py` | Workflow Studio trace pad. Every node streams text after it ran and before the UI moves on: five nodes (`LLM_NODES`: validate_event, route, assign, monitor, recover) via the LLM explaining the rules' decision from `llm_facts()` (derived facts, no identifiers), the rest via `rule_lines()`. Falls back to rules if the LLM fails. Prompt: per-node focused facts, AT MOST 2 short sentences / 35 words, decision then main reason; `two_sentences()` cuts the stream after the second sentence. Words are re-paced (`word_delay_s`, from the run's pace) and the run pauses after each trace, so the next node starts only when the trace is done. `MT02_NARRATOR=rules` disables the LLM. The live monitor never narrates (narrator is set only on the demo state). |
 | `reasons.py` | plain-language layer: station map, sentences, outcome/event/channel/role words. |
 | `demo_views.py` | walkthrough list; tile drawers (`drilldown`) -- demo rows or, for live, `real_rows()` (events not starting `demo-`). |
 | `journeys.py` | Journey Runs rows (filters, pinning of highlighted runs), notification list, mark-as-seen, alert wording, new-fault feed. |
 | `views.py`, `accounts.py`, `events.py`, `runner.py` | overview numbers, decisions, trace, accounts grid and search, UI event feed, sim clock. |
 | `app.py` | `create_dashboard_app(state, demo=None)`. `state` = real side; `demo` = walkthrough (defaults to `state` for single-DB setups/tests). |
 
-**Endpoints (all under `/api`)**: `overview`, `stream` (SSE: `counters`, `event`, `run_start`/`step`/`run_end`, `notify`, `reset`),
+**Endpoints (all under `/api`)**: `overview`, `graph` (nodes and edges of the compiled LangGraph), `stream` (SSE: `counters`, `event`, `run_start`/`step`/`trace`/`run_end`, `notify`, `reset`),
 `monitor` (GET) + `monitor/{pause|resume}` (POST), `journeys`, `notifications` (GET) + `notifications/seen` (POST, body
 `{event_ids: [...]}` or empty = all), `scenario` (list), `scenario/{id}/run?pace_ms=`, `scenario/{id}/steps`, `scenario/reset`,
 `overview/drilldown/{tile}` (conflicts, faults, latency, borrowers, contacts, blocked), `accounts`, `accounts/filter-options`,
@@ -89,8 +91,8 @@ Supervisor-Agent-Orchestration/
   supervisor's tables (`event_queue`, `decision_log`, `contact_log`, `borrower_state`, `borrower_profile`), `journey_run`,
   `monitor_pool`, plus LangGraph checkpoints in `checkpoints.db` beside it. Tiles, Journey Runs, notifications, Accounts,
   Decision Log all read this.
-* **Demo side** (`data/demo/`, `mode="scenario"`): the same schema plus `demo_event`, `demo_setup`, `run_step`. Only the Overview
-  "Workflow walkthrough" uses it. "Reset demo" rebuilds only this database. **A demo run can never change a real number.**
+* **Demo side** (`data/demo/`, `mode="scenario"`): the same schema plus `demo_event`, `demo_setup`, `run_step`. Only the
+  Workflow Studio uses it. "Reset demo" rebuilds only this database. **A demo run can never change a real number.**
   (Tests prove it: `test_walkthrough_runs_never_change_the_real_numbers`.)
 * `serve_ui` default `--mode live` starts both; `--mode day` / `--mode scenario` start the old single-database setups.
   First start loads the dataset twice (slow); later starts reopen. `data/ui` from older versions is no longer used.
@@ -130,14 +132,19 @@ Supervisor-Agent-Orchestration/
 ## 8. Frontend (`frontend/src`)
 
 * **Navigation** (`layout/AppLayout.jsx`): *Journey Supervisor* -> Overview (title "Live Journey", placeholder name in
-  `config/labels.js`, still the owner's choice), Journey Runs (`/runs`), Decision Log (`/decisions`); *Loan Management* -> Accounts
+  `config/labels.js`, still the owner's choice), Workflow Studio (`/studio`), Journey Runs (`/runs`), Decision Log (`/decisions`); *Loan Management* -> Accounts
   (`/accounts`). Borrower Trace still exists at `/trace` (reached from rows and alerts). Removed screens (Budgets, Ownership,
   Faults & Recovery, Agents) are deleted from the tree but remain in git history. Header: monitor pill (+ pause/resume),
   bell, avatar. Removed on request: "Judge demo build..." text and the "MT-02 SUPERVISOR" sidebar label.
-* **Overview** (`pages/Overview.jsx`): six hero tiles (real numbers only; each opens an in-place drawer, `TileDrawer`), then the
-  **Workflow walkthrough**: event picker (15 demo events), Run / Replay / Reset demo, Normal/Slow pace, SVG workflow graph
-  (`components/workflow/*`, 11 stations, edges light per hop, hover card = exactly 3 facts: borrower, owner (Null for fresh),
-  what the supervisor did and why), phone preview of the message, step log. Strictly existing theme tokens (`theme/muiTheme.js`).
+* **Overview** (`pages/Overview.jsx`): only the six hero tiles (real numbers); each opens an in-place drawer (`TileDrawer`), a row
+  opens that run in Journey Runs. The old walkthrough, phone preview and step log were removed from it.
+* **Workflow Studio** (`pages/WorkflowStudio.jsx`, `/studio`, name in `config/labels.js`): dark "bold" canvas (owner allowed it on this
+  screen only; palette `components/studio/studioTheme.js`). `StudioGraph.jsx` draws the nodes/edges from `GET /api/graph` at fixed
+  positions (`studioLayout.js`, view 2000x1400); `studioLogic.js` is the pure reducer (visits, travelled edges, node/edge states);
+  `hooks/useStudio.js` feeds it from the stream or replays saved steps; `TracePad.jsx` streams the working step (LLM thinking shown as
+  a "Reasoning over the facts... N tokens" meter, raw thinking behind a toggle) and shows saved traces on hover. Camera zoom 1.9x +
+  active node 1.3x; unreached nodes fade to 0.1; hover after a run scales a node 2x and dims the rest; click pins a node's trace
+  (click again or the canvas to unpin). Paces: Normal 1100 ms, Slow 2000 ms (`config/labels.js`); a 12-step run takes ~70 s on Normal.
 * **State**: `context/SimContext.jsx` holds one SSE connection (overview counters, run events bus, notifications, toast).
   `hooks/useScenario.js`, `hooks/useRun.js`; pure logic in `components/workflow/{layout,logic}.js`.
 * Gotcha: the installed MUI X DataGrid passes `(params)` to `valueGetter/valueFormatter`; use `renderCell` for custom cell text.
@@ -159,10 +166,11 @@ named `live` and `demo` under that folder's parent), `--events` (day mode). Secr
 
 * Backend: `cd backend/Orchestrator && .venv/bin/python -m pytest -q` (use `python -m pytest`, not `pytest`). Phases 0-13 = the
   supervisor, policy, dataset, API; **14** walkthrough; **15** journey runs, notifications, table upgrade, alert wording;
-  **16** live monitor (pool, window, pause, restart, demo isolation, scripted faults). Many tests need the dataset under
+  **16** live monitor (pool, window, pause, restart, demo isolation, scripted faults); **17** Workflow Studio narration (graph shape,
+  trace order start->trace->end, saved traces, LLM sees no identifiers, fallback, stream parser). Many tests need the dataset under
   `data/portfolio/...` and skip without it.
-* Browser (real headless Chrome via CDP, no Playwright): `frontend/e2e/overview.mjs` (walkthrough graph; honours `E2E_API`,
-  `E2E_UI`), `live.mjs` (monitor runs on its own; demo run never leaks), `notify.mjs` (alert, Ignore, Mark as read, panel,
+* Browser (real headless Chrome via CDP, no Playwright): `frontend/e2e/studio.mjs` (Workflow Studio with the real LLM: graph equals
+  the compiled LangGraph, camera follows each step, fading, streaming, LLM sources, hover), `live.mjs` (monitor runs on its own; demo run never leaks), `notify.mjs` (alert, Ignore, Mark as read, panel,
   reload). The latter two expect a throwaway server pair, see `frontend/README.md`:
   API `:8002` (`MT02_CORS=http://127.0.0.1:5175 python -m scripts.serve_ui --port 8002 --faults public --data-dir /tmp/mt02/ui`),
   UI `:5175` (`VITE_API_BASE_URL=http://localhost:8002 npx vite --port 5175`).
@@ -177,8 +185,10 @@ named `live` and `demo` under that folder's parent), `--events` (day mode). Secr
    come back after a reboot.
 5. Alerts: one-line "Alert Supervisor Agent - {Agent}/{fault} happened and recovering", with Mark as read / Ignore; the bell shows the
    unread count and a panel; read items disappear.
-6. Journey Supervisor module = Overview + Journey Runs + Decision Log; Loan Management module = Accounts.
+6. Journey Supervisor module = Overview + Workflow Studio + Journey Runs + Decision Log; Loan Management module = Accounts.
 7. Overview name ("Live Journey") is a placeholder; owner will choose (one-line edit in `config/labels.js`).
+8. Workflow Studio: the LLM *explains* (rules decide); LLM steps are validate_event, route, assign, monitor, recover; only derived
+   facts go to the LLM; picker = the 15 scenarios; bold look allowed on this screen only; big zoom, not a small bulge.
 
 ## 12. Known limits and open items
 
@@ -192,6 +202,9 @@ named `live` and `demo` under that folder's parent), `--events` (day mode). Secr
 * Not built: borrower drawer, real message delivery (owner will supply agent details), LLM advisor is optional/off without key.
 * GitHub repo is public; `data/snapshot/` holds SQLite snapshots/raw copies pushed on request from the *old* single-database layout,
   now stale. Refresh them after running the new version if still wanted.
+* **Workflow Studio**: the five AI steps call an external LLM (DeepSeek via Sarvam) during a demo run, ~2-3 s each; without a key
+  or with `MT02_NARRATOR=rules` every step shows its rule check. A full scenario takes ~70 s on Normal by design (reading pace).
+  The graph positions are hand-placed (`studioLayout.js`); a new node in the LangGraph would appear only once it is given a position.
 * Process/ops gotchas: the repo's `git remote` URL embeds a personal access token (rotate it; use a credential helper). `pkill -f`
   can match the calling shell; kill by port (`kill $(lsof -ti :8001)`). The user's own backend is usually pid-owned by
   `run_demo.sh`; ask before stopping it.
@@ -200,6 +213,50 @@ named `live` and `demo` under that folder's parent), `--events` (day mode). Secr
 
 1. Read `README.md` (run + how it works), then this file.
 2. Read `orchestrator/graph.py`, `nodes/*.py`, `policy/d12.py` for the supervisor; `ui/state.py`, `ui/monitor.py`, `ui/app.py` for the server.
-3. Read `frontend/src/pages/Overview.jsx`, `context/SimContext.jsx`, `components/NotificationBell.jsx` for the UI.
-4. Run the backend tests, then `e2e/live.mjs` against a throwaway server pair before changing anything.
+3. Read `frontend/src/pages/WorkflowStudio.jsx` (+ `components/studio/*`, `hooks/useStudio.js`), `pages/Overview.jsx`,
+   `context/SimContext.jsx`, `components/NotificationBell.jsx` for the UI; `ui/narrator.py` for the trace pad.
+4. Run the backend tests, then `e2e/studio.mjs` and `e2e/live.mjs` against a throwaway server pair before changing anything.
 5. Match the owner's style: plain words, small verified steps, test against the real dataset, say plainly what was and was not verified.
+
+## 14. Progress log (in order)
+
+Each step was asked for by the owner, built, tested against the real dataset, and (where noted) committed.
+
+1. **Supervisor core and dashboard** (phases 0-13): LangGraph supervisor, D12 policy engine, recovery, SQLite persistence,
+   simulated day, dashboard API and React app. *Initial commit `2648abf`.*
+2. **Overview rebuilt as a walkthrough** (phase 14): 15 demo scenarios on real borrowers, Run one event live, animated graph,
+   hover with 3 facts, phone preview, step log, clickable hero tiles with drawers. Restart keeps saved runs.
+3. **Navigation regrouped**: Journey Supervisor (Overview, Decision Log) and Loan Management (Accounts); Budgets, Ownership,
+   Faults & Recovery and Agents screens removed. A separate Borrower master screen was built and then dropped at the owner's request.
+4. **Journey Runs** (phase 15): every finished real run saved in `journey_run` (with fault and recovery), shown on a new screen,
+   kept across restarts; demo runs never saved there. *Commit `123700a`.*
+5. **Fault notifications**: header bell replaced the borrower search; drop-down alert on a recovered fault; unread count stored in
+   the DB. *Same commit.*
+6. **Live monitor and separate databases** (phase 16): demo walkthrough moved to its own database (`data/demo`) so it never touches
+   the tiles; a background monitor supervises a pool of 15 real borrowers inside the 08:00-19:00 window, pause/resume in the header;
+   in-place upgrade of an older `journey_run` table (fixed a "Failed to fetch" on the notifications endpoint).
+7. **Notification panel**: bell opens a panel of unread alerts (Mark as read / View run / Mark all as read); alert text
+   "Alert Supervisor Agent - {Agent}/{Fault} happened and recovering" with Mark as read / Ignore; removed the "Judge demo build"
+   header text and "MT-02 SUPERVISOR" sidebar label. *Commit `e9f2a36` (pushed). SQLite snapshots pushed earlier on request
+   (`bb57f66`, `4f403c1`; now stale).*
+8. **This handoff document.** *Commit `99e4580` (local, not pushed).*
+9. **Workflow Studio** (phase 17, uncommitted): the walkthrough, phone preview and step log taken off the Overview (tiles stay) and
+   replaced by a new screen under Journey Supervisor:
+   * graph drawn from the compiled LangGraph (`GET /api/graph`: 14 steps + start/end, 25 edges, 16 conditional);
+   * dark canvas; on Run the camera zooms ~1.9x onto the working step, which grows 1.3x more; unreached steps fade to ~10%;
+     travelled edges glow, a pulse runs along the current edge; camera zooms back out at the end;
+   * trace pad streams every step: LLM explanation for validate_event, route, assign, monitor, recover (rules decide; derived
+     facts only; "Reasoning over the facts... N tokens" meter while the model thinks, raw thinking behind a toggle), rule check for
+     the rest, rule-check fallback if the LLM fails; every trace saved in `run_step.trace`; hover after the run shows it (node 2x);
+   * Replay re-types saved traces without calling the model.
+10. **Studio refinements** (uncommitted):
+    * click a step to pin its trace (stays after the cursor leaves; click again / empty canvas / "unpin" to release);
+    * much slower, smooth pacing: words at reading speed (Normal ~90 ms, Slow ~160 ms per word, paces 1100 / 2000 ms), a pause
+      after each trace, and the next step starts only when the trace has finished (~70 s for a 12-step run on Normal);
+    * LLM prompt tightened: per-step focused facts; at most 2 short sentences / 35 words (decision, then the main reason with its
+      rule id); stream cut after the second sentence; answers now ~2-3 s instead of ~9 s; monitor (what failed, what the provider
+      confirmed) and recover (what was applied, what it means for the borrower) now say different things;
+    * confirmed and tested: the live monitor never calls the LLM; narration exists only on the demo database.
+    * Tests: backend phase 17 (9 tests) + full suite green; browser `e2e/studio.mjs` green with the real LLM; lint and build clean.
+11. **Next**: the owner has found "a serious gap" to take up next (not yet described).
+

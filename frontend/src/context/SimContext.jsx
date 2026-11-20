@@ -60,7 +60,7 @@ export function SimProvider({ children }) {
     });
 
     // The live run of one demo event: forwarded as-is to whoever is listening (the workflow graph).
-    ['run_start', 'step', 'run_end'].forEach((name) => {
+    ['run_start', 'step', 'trace', 'run_end'].forEach((name) => {
       es.addEventListener(name, (msg) => {
         const payload = JSON.parse(msg.data);
         runSubs.current.forEach((fn) => fn({ type: name, payload }));

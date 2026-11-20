@@ -83,6 +83,7 @@ CREATE INDEX IF NOT EXISTS ix_queue_account ON event_queue(account_id);
 CREATE TABLE IF NOT EXISTS run_step (              -- one row per node of an ad-hoc run: drives hover, replay, event log
     event_id TEXT NOT NULL, seq INTEGER NOT NULL, node TEXT, station TEXT, ms REAL,
     owner_before TEXT, owner_after TEXT, did TEXT, label TEXT, rule_ids TEXT, data TEXT,
+    trace TEXT,                                    -- the streamed trace-pad text {source, think, text}
     PRIMARY KEY (event_id, seq));
 
 CREATE TABLE IF NOT EXISTS journey_run (           -- one row per finished REAL journey run (kept across restarts)
@@ -129,6 +130,10 @@ class Database:
                 self.conn.execute(f'ALTER TABLE contact_log ADD COLUMN {col} TEXT')
             except sqlite3.OperationalError:
                 pass
+        try:                                           # databases created before the trace pad existed
+            self.conn.execute("ALTER TABLE run_step ADD COLUMN trace TEXT")
+        except sqlite3.OperationalError:
+            pass
         self._upgrade_journey_run()
 
     def _upgrade_journey_run(self) -> None:
