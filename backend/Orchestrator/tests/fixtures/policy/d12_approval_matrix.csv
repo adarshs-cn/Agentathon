@@ -1,0 +1,13 @@
+approval_id,lender_id,action,measure,threshold_min,threshold_max,approver_role,sla_hours,note,rule_basis,source_ref
+A01,L01,settlement_waiver,waiver_pct_of_outstanding,0,10,negotiation_agent,0,Auto-approved within delegation,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A02,L01,settlement_waiver,waiver_pct_of_outstanding,10,25,collections_manager,24,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A03,L01,settlement_waiver,waiver_pct_of_outstanding,25,40,collections_head,48,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A04,L01,settlement_waiver,waiver_pct_of_outstanding,40,100,credit_committee,72,Board-approved settlement policy,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A05,L01,penal_charge_waiver,pct_of_penal,0,50,negotiation_agent,0,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A06,L01,penal_charge_waiver,pct_of_penal,50,100,collections_manager,24,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A07,L01,ptp_extension,extra_days,0,7,negotiation_agent,0,One extension per PTP,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A08,L01,ptp_extension,extra_days,7,30,collections_manager,24,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A09,L01,restructure_offer,tenure_extension_months,0,6,collections_manager,48,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A10,L01,restructure_offer,tenure_extension_months,6,24,credit_committee,96,,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A11,L01,legal_notice_issue,dpd_min,91,9999,legal_agent,0,After NPA classification; collections head approval above Rs 10 lakh outstanding,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)
+A12,L01,agent_handoff,ownership_change,0,0,supervisor,0,Any ownership change between agents is logged with its reason,lender_policy,L01 lender policy (assumed) (board-approved recovery/settlement policy with approval authorities)

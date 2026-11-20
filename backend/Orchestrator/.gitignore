@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/portfolio/
+data/portfolio_run/
+data/ui/
+data/day/
+data/dataset_run/
+data/service/

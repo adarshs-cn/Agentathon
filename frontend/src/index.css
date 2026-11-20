@@ -1,0 +1,109 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+:root {
+  /* Navigation shell */
+  --navbar-background-color: #034e63;
+  --navbar-color: #ffffff;
+  --navbar-hover-background-color: #b2bac2;
+  --navbar-hover-color: #034e63;
+  --footer-background-color: #034e63;
+  --footer-font-color: #ffffff;
+  --avatar-background-color: #034e63;
+
+  /* Filters / table toolbars */
+  --main-filter-background-color: #eff0f0;
+  --main-filter-color: #000000;
+  --main-filter-border-color: #034e63;
+  --main-filter-header-background-color: #034e63;
+  --main-filter-header-color: #eff0f0;
+
+  /* Buttons */
+  --primary-button-background-color: #61ce70;
+  --primary-button-border-color: #61ce70;
+  --primary-button-color: #ffffff;
+
+  --secondary-button-background-color: #ffffff;
+  --secondary-button-border-color: #61ce70;
+  --secondary-button-color: #034e63;
+
+  --action-primary-button-background-color: #ffdd64;
+  --action-primary-button-border-color: #ffdd64;
+  --action-primary-button-color: #000000;
+
+  --action-secondary-button-background-color: #f8f9f9;
+  --action-secondary-button-border-color: #f8f9f9;
+  --action-icon-color: #0088d1;
+
+  /* Surfaces */
+  --container-background-color: #f8f9fc;
+  --basic-header-background: #ffffff;
+  --card-shadow: rgba(151, 151, 154, 0.2) 0px 7px 25px 0px;
+
+  --icon-color: #858585;
+  --icon-background-color: #dadada;
+
+  /* Type scale */
+  --overview-screens-font-size: 11px;
+  --overview-screens-header-font-size: 14px;
+  --font-size: 12px;
+
+  /* Extra hexes used across real screens */
+  --stat-title-grey: #595959;
+  --stat-label-grey: #646464;
+  --stat-value-grey: #444444;
+  --icon-badge-background: #e9eff7;
+  --divider-grey: #dbdbdb;
+  --link-blue: #4baeea;
+  --card-grouped-background: #f8f8f8;
+
+  /* Status semantics: never rely on color alone, pair with icon/label */
+  --status-healthy: #61ce70;
+  --status-degraded: #ffdd64;
+  --status-fault: #d32f2f;
+
+  /* Monospace for IDs, tabular numerals for counts/latencies */
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  font-size: var(--font-size);
+  background: var(--container-background-color);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* thin custom scrollbar, per CN chrome */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #eaeaea;
+}
+::-webkit-scrollbar-thumb {
+  background: #cfcfcf;
+  border-radius: 4px;
+}

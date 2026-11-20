@@ -1,0 +1,37 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	consume_event(consume_event)
+	guardrails_route(guardrails_route)
+	assign(assign)
+	execute_agent(execute_agent)
+	validate_output(validate_output)
+	monitor(monitor)
+	recover(recover)
+	commit(commit)
+	release_owner(release_owner)
+	check_queue(check_queue)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> consume_event;
+	assign --> execute_agent;
+	check_queue --> consume_event;
+	commit --> release_owner;
+	consume_event -.-> __end__;
+	consume_event -.-> guardrails_route;
+	execute_agent -.-> monitor;
+	execute_agent -.-> validate_output;
+	guardrails_route -.-> assign;
+	guardrails_route -.-> consume_event;
+	monitor --> recover;
+	recover -.-> commit;
+	recover -.-> execute_agent;
+	release_owner --> check_queue;
+	validate_output -.-> commit;
+	validate_output -.-> monitor;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

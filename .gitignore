@@ -1,0 +1,17 @@
+# environments and dependencies
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+frontend/dist/
+# secrets (the key lives only here, never in git)
+.env
+# data: the portfolio dataset and every database the app generates
+backend/Orchestrator/data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+.DS_Store

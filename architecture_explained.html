@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supervisor Flow Explained</title>
+<style>
+  :root{
+    --bg:#fafaf8; --fg:#1d1d1b; --muted:#6b6b66; --card:#ffffff; --line:#e3e1da;
+    --accent:#2f6fed; --accent-soft:#e8f0ff; --ok:#1c8a4a; --ok-soft:#e5f6ec;
+    --warn:#b25e00; --warn-soft:#fff2df; --bad:#c0392b; --bad-soft:#fdeceb;
+    --code:#f1efe8;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141413; --fg:#ecebe6; --muted:#9a9990; --card:#1e1e1c; --line:#33322e;
+      --accent:#6c9cff; --accent-soft:#1d2a47; --ok:#4cc27f; --ok-soft:#16301f;
+      --warn:#f0a040; --warn-soft:#3a2a12; --bad:#ee7b6f; --bad-soft:#3b1b18; --code:#262521;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 16px 96px}
+  h1{font-size:2rem;line-height:1.2;margin:0 0 8px}
+  h2{font-size:1.45rem;margin:56px 0 12px;padding-top:8px;border-top:1px solid var(--line)}
+  h3{font-size:1.1rem;margin:24px 0 6px}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:1.05rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:8px;margin:16px 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout.ok{border-color:var(--ok);background:var(--ok-soft)}
+  code{background:var(--code);padding:1px 6px;border-radius:5px;font:0.9em ui-monospace,Menlo,Consolas,monospace}
+  pre{background:var(--code);padding:12px 14px;border-radius:8px;overflow-x:auto;font:0.85em/1.5 ui-monospace,Menlo,Consolas,monospace}
+  nav{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 18px;margin:20px 0}
+  nav a{color:var(--accent);text-decoration:none;display:inline-block;margin:2px 14px 2px 0}
+  .step{display:flex;gap:14px;margin:14px 0}
+  .num{flex:0 0 34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;
+       display:flex;align-items:center;justify-content:center;font-weight:700}
+  .step .body{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .step .body h3{margin:0 0 4px}
+  .tag{display:inline-block;font-size:.75rem;padding:1px 8px;border-radius:99px;margin-right:6px;
+       background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .tag.ok{background:var(--ok-soft);color:var(--ok)}
+  .tag.warn{background:var(--warn-soft);color:var(--warn)}
+  .tag.bad{background:var(--bad-soft);color:var(--bad)}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.93rem;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--code)}
+  .tablewrap{overflow-x:auto}
+  svg{max-width:100%;height:auto;display:block;margin:12px auto}
+  svg text{fill:var(--fg);font:13px system-ui,sans-serif}
+  svg .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+  svg .hl{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+  svg .okb{fill:var(--ok-soft);stroke:var(--ok);stroke-width:1.5}
+  svg .wb{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.5}
+  svg .arrow{stroke:var(--muted);stroke-width:1.6;fill:none;marker-end:url(#ah)}
+  svg .small{font-size:11px;fill:var(--muted)}
+  .mailbox{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+  .env{background:var(--warn-soft);border:1px solid var(--warn);border-radius:6px;padding:4px 10px;font-size:.85rem}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.grid2{grid-template-columns:1fr}.step{gap:10px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>How the Supervisor fits into the CN application</h1>
+<p class="lead">A plain-language walk through the whole flow, from "something happened to a borrower" to "one agent contacted them, and we can prove why". No prior knowledge assumed.</p>
+
+<nav>
+  <strong>Jump to:</strong><br>
+  <a href="#problem">1. The problem</a>
+  <a href="#bus">2. What is an event bus?</a>
+  <a href="#picture">3. The big picture</a>
+  <a href="#steps">4. Step-by-step flow</a>
+  <a href="#faults">5. When something breaks</a>
+  <a href="#ui">6. Your listing page</a>
+  <a href="#langgraph">7. Where LangGraph fits</a>
+  <a href="#example">8. A worked example</a>
+  <a href="#proto">9. Prototype vs real</a>
+  <a href="#glossary">10. Glossary</a>
+</nav>
+
+<div class="callout warn">
+  <strong>Honest note on what is known vs assumed.</strong> The problem statement tells us what the supervisor must do. It does not tell us how CN's backend, queue technology or UI are built. Where this page describes those parts, it is a <em>proposal</em> and is marked as such. Please correct anything that does not match your real system.
+</div>
+
+<!-- =============================================================== -->
+<h2 id="problem">1. The problem in one minute</h2>
+<p>CN is moving from one bot to <strong>several agents</strong>, each doing a different job with borrowers (people who owe money):</p>
+<ul>
+  <li><strong>Reminder</strong>: "your payment is due soon"</li>
+  <li><strong>Negotiation</strong>: "can we agree a new payment plan?"</li>
+  <li><strong>Servicing</strong>: "here is your statement / update your details"</li>
+  <li><strong>Legal</strong>: formal notices</li>
+</ul>
+<p>Each agent works alone. So on the same day, Reminder might text a borrower "pay now" while Negotiation offers them a discount. That is confusing, may break rules, and afterwards nobody can say <em>why</em> it happened.</p>
+
+<div class="card">
+  <strong>The Supervisor's job</strong> is to sit in the middle and make sure that, for every borrower:
+  <ol>
+    <li>only <strong>one agent</strong> is "in charge" at a time (the <em>active owner</em>),</li>
+    <li>nobody gets contacted twice in conflicting ways on the same day,</li>
+    <li>if an agent crashes, loops forever, or returns garbage, we recover <strong>without losing anything</strong> and without double-contacting,</li>
+    <li>every decision is written down with its reason, so an auditor can replay any account.</li>
+  </ol>
+</div>
+<p>The Supervisor does <strong>not</strong> write messages itself. The agents' own logic is out of scope. The Supervisor is a traffic controller.</p>
+
+<!-- =============================================================== -->
+<h2 id="bus">2. What is an "event bus"? (the term you asked about)</h2>
+
+<p>Start with the plain idea: <strong>something happens, and the system needs to be told.</strong> Examples of "things that happen":</p>
+<div class="mailbox">
+  <span class="env">Payment received (account 17)</span>
+  <span class="env">Due date is tomorrow (account 42)</span>
+  <span class="env">Borrower broke a promise to pay (account 8)</span>
+  <span class="env">Legal flag set (account 99)</span>
+  <span class="env">Agent crashed (account 42)</span>
+</div>
+<p>Each of those is called an <strong>event</strong>: a small record saying "this happened, to this account, at this time".</p>
+
+<div class="callout">
+  <strong>An event bus is just a shared mailbox for events.</strong><br>
+  Whoever notices something drops an event into the mailbox. The Supervisor takes events out, one by one, in order, and deals with them. The sender does not need to know who will handle it, and the handler does not need to know who sent it.
+</div>
+
+<h3>Why not just call the supervisor directly?</h3>
+<div class="grid2">
+  <div class="card">
+    <span class="tag bad">Without a mailbox</span>
+    <p>The payment system calls the supervisor directly. If the supervisor is busy or restarting, the call is <strong>lost</strong>. And if five systems call at once for the same borrower, you get chaos.</p>
+  </div>
+  <div class="card">
+    <span class="tag ok">With a mailbox</span>
+    <p>Events wait safely in line. If the supervisor restarts, the events are still there. Events for one borrower are handled <strong>one at a time, in order</strong>. That alone prevents many "two agents at once" problems.</p>
+  </div>
+</div>
+
+<h3>"Partitioned by account": what that means</h3>
+<p>Imagine one lane per borrower. Events for borrower 42 always go through lane 42, so they can never be processed at the same moment by two workers. Different borrowers use different lanes, so thousands can be processed in parallel. That is all "partition by <code>account_id</code>" means.</p>
+
+<h3>What would the bus actually be at CN?</h3>
+<p>The problem statement lists "event bus" as a tool the supervisor must call but does not name a technology. The concept is what matters; the implementation can be any of these:</p>
+<div class="tablewrap">
+<table>
+  <tr><th>Option</th><th>What it is</th><th>When it fits</th></tr>
+  <tr><td><strong>A database table</strong> <code>event_queue</code></td><td>Rows with status PENDING / DONE</td><td>Simplest. Fine for 20,000 accounts. <strong>What I'd start with.</strong></td></tr>
+  <tr><td>A queue service (SQS, RabbitMQ)</td><td>Managed mailbox</td><td>If CN already runs one</td></tr>
+  <tr><td>Kafka</td><td>High-volume log of events</td><td>Only if CN already has it; overkill otherwise</td></tr>
+  <tr><td>A Python list (prototype)</td><td>In-memory only</td><td>Our learning prototype. Lost on restart.</td></tr>
+</table>
+</div>
+<div class="callout ok">
+  <strong>Decision for you:</strong> does CN already have a queue or event system? If yes, we plug into it. If no, we use a database table. The supervisor logic is identical either way.
+</div>
+
+<!-- =============================================================== -->
+<h2 id="picture">3. The big picture</h2>
+<p>Read left to right. Things happen on the left, the Supervisor decides in the middle, agents act on the right, and everything is written down at the bottom.</p>
+
+<svg viewBox="0 0 860 420" role="img" aria-label="Architecture overview">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a8a82"/>
+    </marker>
+  </defs>
+
+  <!-- sources -->
+  <text x="20" y="22" class="small">WHERE EVENTS COME FROM</text>
+  <rect class="box" x="10" y="32" width="170" height="44" rx="8"/><text x="22" y="59">Daily scheduler</text>
+  <rect class="box" x="10" y="86" width="170" height="44" rx="8"/><text x="22" y="113">Payment system</text>
+  <rect class="box" x="10" y="140" width="170" height="44" rx="8"/><text x="22" y="167">CN app (user clicks)</text>
+  <rect class="box" x="10" y="194" width="170" height="44" rx="8"/><text x="22" y="221">Agents (done / failed)</text>
+
+  <!-- bus -->
+  <rect class="wb" x="230" y="70" width="120" height="130" rx="10"/>
+  <text x="248" y="112" style="font-weight:600">EVENT BUS</text>
+  <text x="244" y="132" class="small">the shared mailbox</text>
+  <text x="244" y="150" class="small">1 lane per account</text>
+  <path class="arrow" d="M180,54 L230,100"/><path class="arrow" d="M180,108 L230,115"/>
+  <path class="arrow" d="M180,162 L230,150"/><path class="arrow" d="M180,216 L230,180"/>
+
+  <!-- supervisor -->
+  <rect class="hl" x="400" y="40" width="250" height="230" rx="12"/>
+  <text x="420" y="64" style="font-weight:700">SUPERVISOR (LangGraph)</text>
+  <text x="420" y="92">1. load borrower state</text>
+  <text x="420" y="114">2. guardrails: owner, daily cap</text>
+  <text x="420" y="136">3. route: pick one agent</text>
+  <text x="420" y="158">4. call agent, check its output</text>
+  <text x="420" y="180">5. record contact, update state</text>
+  <text x="420" y="202">6. write decision + reason</text>
+  <text x="420" y="236" class="small">Monitor watches for crash / loop /</text>
+  <text x="420" y="252" class="small">bad output and triggers recovery</text>
+  <path class="arrow" d="M350,135 L400,135"/>
+
+  <!-- agents -->
+  <text x="690" y="22" class="small">AGENTS (not our logic)</text>
+  <rect class="okb" x="690" y="32" width="160" height="40" rx="8"/><text x="704" y="57">Reminder</text>
+  <rect class="okb" x="690" y="80" width="160" height="40" rx="8"/><text x="704" y="105">Negotiation</text>
+  <rect class="okb" x="690" y="128" width="160" height="40" rx="8"/><text x="704" y="153">Servicing</text>
+  <rect class="okb" x="690" y="176" width="160" height="40" rx="8"/><text x="704" y="201">Legal</text>
+  <path class="arrow" d="M650,100 L690,52"/><path class="arrow" d="M650,130 L690,100"/>
+  <path class="arrow" d="M650,160 L690,148"/><path class="arrow" d="M650,190 L690,196"/>
+
+  <!-- stores -->
+  <text x="20" y="300" class="small">WHERE THINGS ARE REMEMBERED (all written by the Supervisor)</text>
+  <rect class="box" x="10"  y="312" width="190" height="86" rx="8"/>
+  <text x="22" y="336" style="font-weight:600">borrower_state</text>
+  <text x="22" y="356" class="small">active owner, last contact,</text><text x="22" y="371" class="small">open promises, status</text>
+  <rect class="box" x="220" y="312" width="190" height="86" rx="8"/>
+  <text x="232" y="336" style="font-weight:600">contact_log</text>
+  <text x="232" y="356" class="small">every message actually sent</text><text x="232" y="371" class="small">(prevents double contact)</text>
+  <rect class="box" x="430" y="312" width="190" height="86" rx="8"/>
+  <text x="442" y="336" style="font-weight:600">decision_log (trace)</text>
+  <text x="442" y="356" class="small">every decision + its reason</text><text x="442" y="371" class="small">(what auditors read)</text>
+  <rect class="box" x="640" y="312" width="210" height="86" rx="8"/>
+  <text x="652" y="336" style="font-weight:600">checkpoints (LangGraph)</text>
+  <text x="652" y="356" class="small">graph progress saved after</text><text x="652" y="371" class="small">every node (crash recovery)</text>
+  <path class="arrow" d="M520,270 L520,312"/>
+  <path class="arrow" d="M440,270 L330,312"/>
+  <path class="arrow" d="M420,270 L130,312"/>
+  <path class="arrow" d="M600,270 L700,312"/>
+</svg>
+
+<p>The borrower data you already have (tables <strong>D1, D2, D4, D6</strong>: 20,000 accounts) is read from your existing database. The four boxes at the bottom are new tables that belong to the Supervisor. It never edits your existing tables.</p>
+
+<!-- =============================================================== -->
+<h2 id="steps">4. Step-by-step flow (one event, from start to finish)</h2>
+<p>Take one event: <em>"Due date is tomorrow for account 42."</em> Here is everything that happens.</p>
+
+<div class="step"><div class="num">0</div><div class="body">
+  <h3>Something happens <span class="tag">trigger</span></h3>
+  <p>A scheduler runs every morning and notices account 42 is due tomorrow. (Other triggers: a payment arrives, a collector clicks a button in the CN app, an agent reports it finished.)</p>
+</div></div>
+
+<div class="step"><div class="num">1</div><div class="body">
+  <h3>An event is dropped on the bus <span class="tag">event bus</span></h3>
+  <p>The scheduler writes: <code>{"type": "DUE_SOON", "account_id": 42, "time": "2026-11-19 09:00"}</code> into the mailbox, in lane 42. It then forgets about it. It does not wait for an answer.</p>
+</div></div>
+
+<div class="step"><div class="num">2</div><div class="body">
+  <h3>The Supervisor picks it up <span class="tag">consume</span></h3>
+  <p>The Supervisor takes the next event for account 42. While it works on account 42, nothing else touches account 42. LangGraph opens a "thread" named <code>42</code>, which is that account's own saved notebook.</p>
+</div></div>
+
+<div class="step"><div class="num">3</div><div class="body">
+  <h3>Load what we know about the borrower <span class="tag">state</span></h3>
+  <p>Read from your existing tables (days past due, legal flag, any open promise to pay) plus the Supervisor's own record (who currently owns this borrower, when they were last contacted). All of it goes into one Python dictionary called the <strong>state</strong>. <em>This is the first node in our prototype.</em></p>
+</div></div>
+
+<div class="step"><div class="num">4</div><div class="body">
+  <h3>Guardrails: is it even allowed? <span class="tag warn">safety</span></h3>
+  <p>Plain yes/no checks, no AI involved:</p>
+  <ul>
+    <li>Is another agent already the active owner? Then this event waits.</li>
+    <li>Was the borrower already contacted today? Then do not contact again.</li>
+    <li>Has this borrower or this agent used up its budget (max contacts)? Then stop.</li>
+  </ul>
+  <p>If any check fails, we write "blocked, because ..." to the trace and stop here.</p>
+</div></div>
+
+<div class="step"><div class="num">5</div><div class="body">
+  <h3>Route: choose exactly one agent <span class="tag">decision</span></h3>
+  <p>Fixed rules, checked in order, first match wins. For example:</p>
+  <pre>legal flag set          -> Legal
+payment received        -> Servicing
+promise to pay broken   -> Negotiation
+days past due 30-90     -> Negotiation
+otherwise               -> Reminder</pre>
+  <p>The answer plus the reason ("DPD 5 is 30 or below") is stored in the state. Rules are used because they are instant: the requirement is under 100 ms.</p>
+</div></div>
+
+<div class="step"><div class="num">6</div><div class="body">
+  <h3>Take ownership, then call the agent <span class="tag">act</span></h3>
+  <p>The Supervisor marks "Reminder owns account 42 right now", then calls the Reminder agent. Because the owner is now recorded, no other agent can start on account 42.</p>
+</div></div>
+
+<div class="step"><div class="num">7</div><div class="body">
+  <h3>Check what the agent returned <span class="tag">validate</span></h3>
+  <p>Did it return the expected shape (status, outcome)? If it returned nonsense, that is a "malformed output" fault and we go to the recovery path (section 5).</p>
+</div></div>
+
+<div class="step"><div class="num">8</div><div class="body">
+  <h3>Record the contact, safely <span class="tag ok">idempotent</span></h3>
+  <p>Before the message goes out, the Supervisor writes a contact-log row with a unique key like <code>42 | 2026-11-19 | reminder</code>. If the system crashes and replays this step, the key already exists, so the message is <strong>not sent a second time</strong>. This is how we guarantee zero double contacts.</p>
+</div></div>
+
+<div class="step"><div class="num">9</div><div class="body">
+  <h3>Update state and release ownership <span class="tag">commit</span></h3>
+  <p>Save "last contact = now", clear the owner, close the event as DONE in the bus.</p>
+</div></div>
+
+<div class="step"><div class="num">10</div><div class="body">
+  <h3>Write the reason into the trace <span class="tag">audit</span></h3>
+  <p>One line per decision: what the event was, which agent, <em>why</em>, and the result. Because every node of the graph is also checkpointed, an auditor can open account 42 and replay the whole day.</p>
+</div></div>
+
+<!-- =============================================================== -->
+<h2 id="faults">5. When something breaks</h2>
+<p>The test day injects faults on purpose. Each has a simple response:</p>
+<div class="tablewrap">
+<table>
+  <tr><th>Fault</th><th>What it looks like</th><th>What the Supervisor does</th></tr>
+  <tr><td><strong>Crash before sending</strong></td><td>Agent dies, nothing was sent</td><td>Safe to retry: run the agent again</td></tr>
+  <tr><td><strong>Crash after sending</strong></td><td>Agent dies, but the borrower already got the message</td><td>Contact log shows it was sent, so mark it done. <strong>Never resend.</strong></td></tr>
+  <tr><td><strong>Loop</strong></td><td>Agent keeps saying "in progress" forever</td><td>After 3 tries, stop it and hand the borrower to another agent or to a human</td></tr>
+  <tr><td><strong>Malformed output</strong></td><td>Agent returns garbage</td><td>Retry once; if it happens again, reroute</td></tr>
+  <tr><td><strong>Two events at once</strong></td><td>Two agents want the same borrower</td><td>The owner lock lets one in; the other waits or is dropped, with the reason logged</td></tr>
+  <tr><td><strong>Never seen before</strong></td><td>Something the rules did not anticipate</td><td>An LLM may <em>suggest</em> one action from a short safe list (retry, skip, reroute, quarantine). The rules still have the final say.</td></tr>
+  <tr><td><strong>Supervisor itself restarts</strong></td><td>Process killed mid-run</td><td>LangGraph checkpoints let it resume at the exact node it stopped at</td></tr>
+</table>
+</div>
+<div class="callout">
+  <strong>The "Monitor"</strong> is a watcher that checks agent health (is it alive, is it making progress). It can only <em>read</em> and <em>request</em> a recovery. Only the Supervisor changes the state. This keeps one single writer and avoids a second source of conflicts.
+</div>
+<div class="callout ok">
+  <strong>Where the LLM is used</strong>, and where it is not: it is <em>not</em> in the 100 ms routing path. It is only called for the rare unscripted fault, and it can only pick from a fixed safe menu. That is what makes the system agentic without becoming unpredictable.
+</div>
+
+<!-- =============================================================== -->
+<h2 id="ui">6. How this shows up on your account / customer listing page</h2>
+<p><em>(Proposal: I have not seen the CN front end, so adjust to match your real pages.)</em></p>
+
+<svg viewBox="0 0 860 300" role="img" aria-label="UI to backend">
+  <rect class="box" x="10" y="20" width="250" height="250" rx="10"/>
+  <text x="24" y="44" style="font-weight:700">CN app (browser)</text>
+  <rect class="hl" x="24" y="58" width="222" height="54" rx="6"/>
+  <text x="34" y="80">Account list page</text>
+  <text x="34" y="98" class="small">columns: owner, last contact, status</text>
+  <rect class="hl" x="24" y="124" width="222" height="54" rx="6"/>
+  <text x="34" y="146">Account detail page</text>
+  <text x="34" y="164" class="small">"Journey trace" timeline</text>
+  <rect class="hl" x="24" y="190" width="222" height="54" rx="6"/>
+  <text x="34" y="212">Action buttons</text>
+  <text x="34" y="230" class="small">e.g. "Contact now"</text>
+
+  <rect class="box" x="330" y="20" width="230" height="250" rx="10"/>
+  <text x="344" y="44" style="font-weight:700">CN backend API</text>
+  <text x="344" y="76" class="small">GET /accounts</text><text x="344" y="92" class="small">   (joins D1/D2/D4/D6 + borrower_state)</text>
+  <text x="344" y="126" class="small">GET /accounts/42/trace</text><text x="344" y="142" class="small">   (reads decision_log)</text>
+  <text x="344" y="176" class="small">POST /accounts/42/contact-request</text><text x="344" y="192" class="small">   (drops an event on the bus)</text>
+
+  <rect class="wb" x="630" y="20" width="220" height="110" rx="10"/>
+  <text x="644" y="44" style="font-weight:700">Event bus</text>
+  <text x="644" y="66" class="small">receives the click as an event</text>
+  <rect class="hl" x="630" y="150" width="220" height="120" rx="10"/>
+  <text x="644" y="174" style="font-weight:700">Supervisor service</text>
+  <text x="644" y="196" class="small">runs in the background, always on</text>
+  <text x="644" y="212" class="small">not inside the browser or the API</text>
+
+  <path class="arrow" d="M260,85 L330,85"/>
+  <path class="arrow" d="M260,150 L330,135"/>
+  <path class="arrow" d="M260,217 L330,185"/>
+  <path class="arrow" d="M560,185 L630,80"/>
+  <path class="arrow" d="M740,130 L740,150"/>
+</svg>
+
+<ul>
+  <li><strong>Listing page:</strong> shows, per account, who currently owns it, when it was last contacted, and status. The data comes straight from the Supervisor's <code>borrower_state</code> table, joined to your existing account data.</li>
+  <li><strong>Detail page:</strong> a "journey trace" tab. The auditor picks an account and sees every event, decision, reason and agent result in time order. This is what judges will ask for.</li>
+  <li><strong>A manual action</strong> (collector clicks "contact now") does <em>not</em> call an agent directly. It posts an event, and the Supervisor applies the same guardrails. A human cannot accidentally cause a double contact either.</li>
+</ul>
+<div class="callout warn">
+  The Supervisor is a <strong>background service</strong>, not code that runs when a page loads. The page only reads the results and drops requests onto the bus.
+</div>
+
+<!-- =============================================================== -->
+<h2 id="langgraph">7. Where LangGraph and the checkpointer fit</h2>
+<ul>
+  <li><strong>Graph:</strong> the steps in section 4 are the nodes of one LangGraph graph. Edges decide what runs next (for example, guardrail fails -> stop; agent output bad -> recovery).</li>
+  <li><strong>State:</strong> one dictionary (<code>TypedDict</code>) that flows through the graph. Each node returns only the pieces it changes, and LangGraph merges them.</li>
+  <li><strong>Thread:</strong> one thread per borrower: <code>thread_id = account_id</code>. That gives every account its own private saved history.</li>
+  <li><strong>Checkpointer:</strong> after every node, LangGraph saves the state to a database. If the process dies between node 6 and node 8, on restart it reloads the last saved state and continues from the exact next node. That is the "survives restart without losing state" requirement.</li>
+  <li><strong>Stub agents inside the graph:</strong> in the prototype each stub agent is a node. In production they may be separate services reached through a small adapter, but the supervisor graph looks the same.</li>
+</ul>
+<p><strong>Two kinds of memory, do not confuse them:</strong></p>
+<div class="tablewrap">
+<table>
+  <tr><th></th><th>Checkpoint</th><th>Our own tables (borrower_state, contact_log)</th></tr>
+  <tr><td>What it remembers</td><td>Where the graph was mid-run</td><td>Business facts about the borrower</td></tr>
+  <tr><td>Lifetime</td><td>Per run, per account</td><td>Permanent</td></tr>
+  <tr><td>Used for</td><td>Resume after a crash, replay</td><td>Locks, daily cap, audit, listing page</td></tr>
+</table>
+</div>
+
+<!-- =============================================================== -->
+<h2 id="example">8. A worked example: account 42 over one day</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Time</th><th>What happens</th><th>Why (as logged)</th></tr>
+  <tr><td>09:00</td><td>Event <code>DUE_SOON</code> arrives</td><td>Scheduler noticed due date tomorrow</td></tr>
+  <tr><td>09:00</td><td>Supervisor loads state: DPD 5, no owner, never contacted today</td><td>Guardrails all pass</td></tr>
+  <tr><td>09:00</td><td>Routed to <strong>Reminder</strong></td><td>"DPD 5 is 30 or below"</td></tr>
+  <tr><td>09:00</td><td>Reminder crashes <em>after</em> sending the SMS</td><td>Fault: crash-after-send</td></tr>
+  <tr><td>09:01</td><td>Monitor sees the crash; contact log shows SMS already sent</td><td>Action: mark done, <strong>do not resend</strong></td></tr>
+  <tr><td>11:30</td><td>Event <code>CONTACT_REQUESTED</code> (collector clicked a button)</td><td>Contacted today already, so blocked, reason logged</td></tr>
+  <tr><td>15:00</td><td>Event <code>PAYMENT_RECEIVED</code></td><td>Payment events are allowed to update status; routed to Servicing</td></tr>
+</table>
+</div>
+<p>Open account 42's trace tomorrow and you see every row above. That is the "complete trace for any account the judges pick."</p>
+
+<!-- =============================================================== -->
+<h2 id="proto">9. Prototype vs the real thing</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Piece</th><th>In our learning prototype</th><th>In production</th></tr>
+  <tr><td>Event bus</td><td>Python list</td><td>DB table or CN's existing queue</td></tr>
+  <tr><td>Borrower data</td><td>Dictionary in the code</td><td>D1, D2, D4, D6 tables</td></tr>
+  <tr><td>Checkpoints</td><td>SQLite file</td><td>Postgres</td></tr>
+  <tr><td>Stub agents</td><td>Python functions, nodes in the graph</td><td>Real agents behind an adapter</td></tr>
+  <tr><td>Fault injector</td><td>A script that makes agents fail on cue</td><td>The judges' event simulator</td></tr>
+  <tr><td>Trace</td><td>Printed and stored locally</td><td>Decision log table (+ Langfuse for the visual timeline)</td></tr>
+</table>
+</div>
+
+<h3>How we build the prototype (the order you asked for)</h3>
+<ol>
+  <li><strong>Step 1 (done):</strong> one node, <code>load_borrower</code>, plus a checkpointer. See the state fill in and reload it from disk.</li>
+  <li><strong>Step 2:</strong> add <code>route</code> (rules pick an agent, reason stored).</li>
+  <li><strong>Step 3:</strong> add the stub agent nodes (<code>reminder</code>, <code>negotiation</code>).</li>
+  <li><strong>Step 4:</strong> add <code>commit</code> with the contact log and the one-contact-per-day rule.</li>
+  <li><strong>Step 5:</strong> add the fault injector and the recovery path (crash, loop, bad output).</li>
+  <li><strong>Step 6:</strong> add the monitor and the LLM for unscripted faults.</li>
+</ol>
+<p>After each step we run it and print the state before and after, exactly as in step 1.</p>
+
+<!-- =============================================================== -->
+<h2 id="glossary">10. Glossary</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Term</th><th>Plain meaning</th></tr>
+  <tr><td>Event</td><td>A small record: "this happened to this account"</td></tr>
+  <tr><td>Event bus</td><td>The shared mailbox events are dropped into and read from</td></tr>
+  <tr><td>Partition / lane</td><td>Events for one account always go in the same lane, so they are handled in order</td></tr>
+  <tr><td>Supervisor</td><td>The traffic controller: decides who acts, blocks conflicts, recovers from faults</td></tr>
+  <tr><td>Active owner</td><td>The one agent allowed to act on a borrower right now</td></tr>
+  <tr><td>Guardrail</td><td>A hard rule that cannot be overridden (one owner, daily contact cap)</td></tr>
+  <tr><td>Budget</td><td>A maximum number of contacts per borrower or per agent</td></tr>
+  <tr><td>Contact log</td><td>A record of every message really sent</td></tr>
+  <tr><td>Idempotency key</td><td>A unique ID per contact, so replaying a step cannot send twice</td></tr>
+  <tr><td>State</td><td>The Python dictionary that flows through the graph</td></tr>
+  <tr><td>Node / edge</td><td>A step in the graph / the arrow saying what runs next</td></tr>
+  <tr><td>Thread</td><td>One saved notebook per account (<code>thread_id = account_id</code>)</td></tr>
+  <tr><td>Checkpoint</td><td>A saved snapshot of the state after a node, used to resume or replay</td></tr>
+  <tr><td>Monitor</td><td>A watcher for agent health; it can request recovery but not change state</td></tr>
+  <tr><td>Trace</td><td>The recorded timeline of events, decisions and reasons for an account</td></tr>
+  <tr><td>DPD</td><td>Days past due</td></tr>
+  <tr><td>PTP</td><td>Promise to pay</td></tr>
+</table>
+</div>
+
+<h2>Open questions for you</h2>
+<ol>
+  <li>Does CN already have a queue or event system, or should we use a database table?</li>
+  <li>Which database does the app use (Postgres, MySQL, other)? That decides where the Supervisor tables and checkpoints live.</li>
+  <li>Do the real agents expose a heartbeat or a "message sent" confirmation? The crash-after-send logic depends on it.</li>
+  <li>Are there consent flags or contact limits in the data beyond D1, D2, D4 and D6? They are not in what we were given.</li>
+</ol>
+
+</div>
+</body>
+</html>

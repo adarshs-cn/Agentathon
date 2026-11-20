@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supervisor Graph Explained</title>
+<style>
+  :root{
+    --bg:#fafaf8; --fg:#1d1d1b; --muted:#6b6b66; --card:#ffffff; --line:#e3e1da; --code:#f1efe8;
+    --accent:#2f6fed; --accent-soft:#e8f0ff; --ok:#1c8a4a; --ok-soft:#e5f6ec;
+    --warn:#b25e00; --warn-soft:#fff2df; --bad:#c0392b; --bad-soft:#fdeceb;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141413; --fg:#ecebe6; --muted:#9a9990; --card:#1e1e1c; --line:#33322e; --code:#262521;
+      --accent:#6c9cff; --accent-soft:#1d2a47; --ok:#4cc27f; --ok-soft:#16301f;
+      --warn:#f0a040; --warn-soft:#3a2a12; --bad:#ee7b6f; --bad-soft:#3b1b18;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 16px 96px}
+  h1{font-size:2rem;line-height:1.2;margin:0 0 8px}
+  h2{font-size:1.45rem;margin:56px 0 12px;padding-top:10px;border-top:1px solid var(--line)}
+  h3{font-size:1.05rem;margin:0 0 4px}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:1.05rem}
+  code{background:var(--code);padding:1px 6px;border-radius:5px;font:.9em ui-monospace,Menlo,Consolas,monospace}
+  pre{background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;font:.8em/1.45 ui-monospace,Menlo,Consolas,monospace;margin:6px 0;max-height:420px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+  .callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:8px;margin:16px 0}
+  .callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+  .callout.ok{border-color:var(--ok);background:var(--ok-soft)}
+  nav{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 18px;margin:18px 0}
+  nav a{color:var(--accent);text-decoration:none;display:inline-block;margin:2px 14px 2px 0}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:.9rem;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--code)}
+  .tablewrap{overflow-x:auto}
+  table.mini th{width:170px;white-space:nowrap}
+  .tag{display:inline-block;font-size:.72rem;padding:1px 8px;border-radius:99px;margin-left:6px;font-weight:600;
+       background:var(--accent-soft);color:var(--accent);vertical-align:middle}
+  .agt .tag{background:var(--ok-soft);color:var(--ok)} .flt .tag{background:var(--warn-soft);color:var(--warn)}
+  .ncard{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:12px;padding:12px 18px;margin:14px 0}
+  .ncard.agt{border-left-color:var(--ok)} .ncard.flt{border-left-color:var(--warn)}
+  .ttl{font-weight:600;margin:2px 0}
+  details summary{cursor:pointer;color:var(--accent);margin:6px 0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .big{font-size:1.02rem}
+  .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0}
+  .fbox{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;flex:1;min-width:190px}
+  .fbox b{display:block}
+  .farrow{color:var(--muted);text-align:center;font-size:.8rem;min-width:90px}
+  /* svg */
+  svg{width:100%;height:auto;display:block}
+  svg text{fill:var(--fg);font:15px system-ui,sans-serif}
+  svg .elabel{font-size:12.5px;fill:var(--muted)}
+  svg .edge{stroke:#8a8a82;stroke-width:1.6;fill:none}
+  svg .edge.dash{stroke-dasharray:6 4}
+  svg .se{fill:var(--code);stroke:var(--line)}
+  svg .node rect{stroke-width:1.6}
+  svg .sup rect{fill:var(--accent-soft);stroke:var(--accent)}
+  svg .agt rect{fill:var(--ok-soft);stroke:var(--ok)}
+  svg .flt rect{fill:var(--warn-soft);stroke:var(--warn)}
+  svg .node.visited rect{stroke-width:3}
+  svg .node.active rect{fill:var(--accent);stroke:var(--fg);stroke-width:3}
+  svg .node.active text{fill:#fff;font-weight:700}
+  .legend span{display:inline-block;margin-right:14px;font-size:.88rem}
+  .sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:5px;border:1.5px solid}
+  /* walkthrough */
+  #tabs{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+  #tabs button, .nav button{font:inherit;font-size:.86rem;padding:5px 11px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+  #tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .walk{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;align-items:start}
+  #detail pre{white-space:pre-wrap;word-break:break-word}
+  .walk .gcol{position:sticky;top:10px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+  .chip{font:.75rem ui-monospace,monospace;padding:2px 7px;border-radius:6px;background:var(--code);border:1px solid var(--line);cursor:pointer}
+  .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .nav{display:flex;gap:8px;align-items:center;margin:8px 0}
+  .kv{font:.8em/1.45 ui-monospace,Menlo,monospace;padding:3px 8px;border-radius:5px;white-space:pre-wrap;word-break:break-word}
+  .kv.ch{background:var(--ok-soft);border-left:3px solid var(--ok)}
+  .kv.same{color:var(--muted)}
+  .lbl{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px;font-weight:600}
+  .badge{display:inline-block;padding:1px 9px;border-radius:99px;font-size:.8rem;font-weight:600}
+  .b-CONTACTED{background:var(--ok-soft);color:var(--ok)} .b-BLOCKED,.b-SUPPRESSED,.b-REJECTED{background:var(--warn-soft);color:var(--warn)}
+  .b-ESCALATED{background:var(--bad-soft);color:var(--bad)}
+  @media(max-width:900px){.walk,.two{grid-template-columns:1fr}.walk .gcol{position:static}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The Supervisor Graph, node by node</h1>
+<p class="lead">One LangGraph <code>StateGraph</code> with 15 nodes. The four stub agents are nodes inside it. Every state update on this page was captured from a real run of <code>incremental/final_graph.py</code>, not written by hand.</p>
+
+<nav><strong>Jump to:</strong>
+  <a href="#states">1. GraphState vs BorrowerState</a>
+  <a href="#stores">2. Other stores</a>
+  <a href="#graph">3. The graph</a>
+  <a href="#nodes">4. Every node</a>
+  <a href="#walk">5. Dry runs</a>
+  <a href="#eod">6. End-of-day check</a>
+  <a href="#notes">7. What is simplified</a>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="states">1. GraphState vs BorrowerState</h2>
+
+<div class="callout">
+  <strong>In one sentence each.</strong><br>
+  <b>BorrowerState</b> is the borrower's permanent file: who owns them, when they were last contacted, what they promised.<br>
+  <b>GraphState</b> is the clipboard the supervisor carries while handling <em>one event</em>: the event, a copy of the file, the decision, the agent's result, any fault.
+</div>
+
+<div class="flow">
+  <div class="fbox"><b>borrower_state table</b>BorrowerState, permanent, our own table</div>
+  <div class="farrow">load_borrower<br>copies it &rarr;</div>
+  <div class="fbox"><b>GraphState.borrower</b>a copy, for this run only</div>
+  <div class="farrow">&larr; assign, commit,<br>release write back</div>
+  <div class="fbox"><b>borrower_state table</b>updated</div>
+</div>
+
+<p>The most important rule: <strong>only three nodes (assign, commit, release) write to the borrower's file, and agents never do.</strong> Everything else only reads it or changes the clipboard. That keeps one trustworthy record per borrower.</p>
+
+@@COMPARE@@
+
+<h3 style="margin-top:28px">GraphState fields (the clipboard)</h3>
+<p>Defined as a <code>TypedDict</code>. Each node returns only the fields it changes, and LangGraph merges them in.</p>
+@@GRAPH_FIELDS@@
+
+<h3 style="margin-top:28px">BorrowerState fields (the file)</h3>
+<p>Two groups: facts that come from your existing tables and are read-only, and the supervisor-owned record that the supervisor reads and writes.</p>
+@@BORROWER_FIELDS@@
+
+<div class="callout warn">
+  <strong>A subtlety worth knowing.</strong> The checkpointer saves GraphState under <code>thread_id = account_id</code>. So when the same account gets a second event, LangGraph starts with the <em>previous run's final GraphState</em> still in place. That is why the first node, <code>validate_event</code>, resets the scratch fields. Scenario 2 in the dry runs shows it.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="stores">2. The other stores</h2>
+<p>Besides BorrowerState there are three more durable things the nodes read or write. In this prototype they are in-memory Python objects; in production they are tables.</p>
+<div class="tablewrap"><table>
+<tr><th>Store</th><th>Row shape</th><th>Who writes</th><th>Why it exists</th></tr>
+<tr><td><code>contact_log</code></td><td><code>{key, account_id, agent, time}</code><br>key = <code>B1|2026-11-20|reminder</code></td><td>the <code>send()</code> function, called by an agent</td><td>The truth about what was actually sent. The monitor reads it after a crash. A repeated key is refused, so a replay cannot double-send. Daily caps and agent budgets are counted from it.</td></tr>
+<tr><td><code>decision_log</code></td><td><code>{event_id, account_id, node, text}</code></td><td>every node, one line each</td><td>The audit trail: what each node decided and why. This is what "a complete trace for any account" is built from.</td></tr>
+<tr><td><code>events_done</code></td><td><code>{event_id: status}</code></td><td>close_event</td><td>Marks an event finished, so it is never processed twice.</td></tr>
+</table></div>
+<p>Agent budgets are not a separate table: they are counted from <code>contact_log</code>, so there is no second number that could drift out of step.</p>
+
+<!-- ============================================================ -->
+<h2 id="graph">3. The graph</h2>
+<div class="card legend">
+  <span><i class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></i>supervisor node (our logic)</span>
+  <span><i class="sw" style="background:var(--ok-soft);border-color:var(--ok)"></i>stub agent node</span>
+  <span><i class="sw" style="background:var(--warn-soft);border-color:var(--warn)"></i>fault handling</span>
+  <span>solid line = normal path</span><span>dashed line = exit or loop-back</span>
+</div>
+<div class="card">@@SVG_OVERVIEW@@</div>
+<p>Read it top to bottom. The left dashed rail is the <em>early exit</em>: an invalid event, a blocked event or a suppressed event goes straight to <code>close_event</code> without touching an agent. The right-hand column is the fault path: it is only entered when something went wrong, and a dashed line brings it back to the agent (RESUME) or on to commit.</p>
+
+<h3 style="margin-top:24px">Every conditional edge</h3>
+@@EDGES@@
+
+<!-- ============================================================ -->
+<h2 id="nodes">4. Every node</h2>
+<p>Each card says what the node does in plain words, what it reads, what it writes (split into GraphState and the durable stores), and where it goes next. The real code is under each card.</p>
+@@NODES@@
+
+<!-- ============================================================ -->
+<h2 id="walk">5. Dry runs, captured from a real run</h2>
+<p>Pick a scenario, then step through it. The graph highlights the node that just ran. On the right you see exactly what that node <em>returned</em> (the partial update), the full GraphState afterwards with the changed fields marked green, the borrower's file in the store, and what was added to the decision log.</p>
+<noscript><p><strong>This section needs JavaScript.</strong></p></noscript>
+<div id="tabs"></div>
+<div class="card" id="head"></div>
+<div class="walk">
+  <div class="gcol"><div class="card">@@SVG_WALK@@</div></div>
+  <div>
+    <div class="nav"><button id="prev">&larr; prev</button><span id="pos"></span><button id="next">next &rarr;</button><span style="color:var(--muted);font-size:.8rem">(arrow keys work)</span></div>
+    <div class="chips" id="chips"></div>
+    <div id="detail" class="card"></div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="eod">6. End-of-day check</h2>
+<p>After all @@NSCN@@ scenarios ran in one process, here are the stores. The grading rule is "zero conflicting contacts". The most contacts any borrower received today is <strong>@@WORST@@</strong>.</p>
+@@EOD@@
+<h3>contact_log (every message actually sent)</h3>
+@@LOG@@
+<p>B4 ended <code>NEEDS_REVIEW</code> and B7 <code>QUARANTINED</code>: they were deliberately not contacted. B2 was contacted once even though its agent crashed after sending.</p>
+
+<!-- ============================================================ -->
+<h2 id="notes">7. What is simplified here, and what is assumed</h2>
+<ul>
+  <li><strong>The graph handles one event.</strong> A small driver loop takes the next event off the bus and calls <code>graph.invoke</code> / <code>stream</code> with <code>thread_id = account_id</code>. The bus is not a node.</li>
+  <li><strong>Events run one after another.</strong> So the owner lock cannot be seen blocking a truly simultaneous event; scenario 10 pre-sets an owner to show the check. In production the lock must be an atomic compare-and-set in the database.</li>
+  <li><strong>The LLM is not wired in.</strong> The monitor's catch-all branch quarantines. That branch is where a model would choose from a fixed safe menu (resume, skip, reroute, quarantine), never overriding the guardrails.</li>
+  <li><strong>Policy choices I made, for you to confirm:</strong> at most 1 contact per borrower per day (so even a payment-confirmation after a reminder is blocked), 10 per agent per day, the DPD thresholds 30 and 90, the rule order in <code>route</code>, and that an open promise to pay suppresses all contact.</li>
+  <li><strong>Commitments are seeded by hand</strong> (B9). In production they would come from your data or from promise-to-pay events.</li>
+  <li><strong>Time</strong> is taken from the event, which also keeps replays deterministic.</li>
+  <li><strong>The fault injector is ours.</strong> It runs from a plain dict script inside the stub agents. The real judging harness may deliver faults differently; the supervisor only ever reacts to what it observes (an exception, a bad return, silence).</li>
+  <li><strong>Persistence:</strong> checkpoints use SQLite here (in memory for this report). Production would use Postgres.</li>
+</ul>
+
+</div>
+
+<script id="scn" type="application/json">@@DATA@@</script>
+<script>
+(function(){
+  var D = JSON.parse(document.getElementById('scn').textContent);
+  var S = D.scenarios, ONE = D.one, cur = 0, step = 0;
+  var $ = function(id){return document.getElementById(id)};
+  function esc(x){return String(x).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+  function js(x){return JSON.stringify(x, null, 2)}
+
+  S.forEach(function(s,i){
+    var b = document.createElement('button');
+    b.textContent = s.i + '. ' + s.event.account_id + ' ' + s.short;
+    b.onclick = function(){cur=i; step=0; draw();};
+    $('tabs').appendChild(b);
+  });
+
+  function paint(){
+    var s = S[cur];
+    document.querySelectorAll('#w-n-validate_event').forEach(function(){});
+    var nodes = document.querySelectorAll('svg [id^="w-n-"]');
+    nodes.forEach(function(n){n.classList.remove('active','visited')});
+    s.steps.forEach(function(st,i){
+      var n = document.getElementById('w-n-'+st.node);
+      if(!n) return;
+      if(i<step) n.classList.add('visited');
+      if(i===step) n.classList.add('active');
+    });
+  }
+
+  function draw(){
+    var s = S[cur], st = s.steps[step];
+    Array.prototype.forEach.call($('tabs').children, function(b,i){b.classList.toggle('on', i===cur)});
+    var o = s.outcome || {};
+    $('head').innerHTML =
+      '<h3>Scenario '+s.i+': '+esc(s.short)+' <span class="badge b-'+esc(o.status)+'">'+esc(o.status)+'</span></h3>'+
+      '<p>'+esc(s.why)+'</p>'+
+      '<div class="lbl">The event that starts this run</div><div class="kv same">'+esc(JSON.stringify(s.event))+'</div>'+
+      '<div class="lbl">Final outcome</div><div class="kv same">'+esc(JSON.stringify(s.outcome))+
+      '  |  checkpoints saved for thread '+esc(s.event.account_id)+' so far: '+s.checkpoints+'</div>';
+
+    $('chips').innerHTML = '';
+    s.steps.forEach(function(x,i){
+      var c = document.createElement('span');
+      c.className = 'chip'+(i===step?' on':'');
+      c.textContent = x.n+' '+x.node;
+      c.onclick = function(){step=i; draw();};
+      $('chips').appendChild(c);
+    });
+    $('pos').textContent = 'step '+(step+1)+' of '+s.steps.length;
+
+    var upd = st.update, changed = upd ? Object.keys(upd) : [];
+    var h = '<h3><code>'+esc(st.node)+'</code></h3><p class="ttl">'+esc(ONE[st.node]||'')+'</p>';
+    h += '<div class="lbl">1. What this node returned (the partial update)</div>';
+    h += upd ? '<pre>'+esc(js(upd))+'</pre>' : '<div class="kv same">no change (the node returned nothing)</div>';
+
+    h += '<div class="lbl">2. GraphState after this node (changed fields in green)</div>';
+    Object.keys(st.state).forEach(function(k){
+      var ch = changed.indexOf(k)>=0;
+      h += '<div class="kv '+(ch?'ch':'same')+'">'+esc(k)+': '+esc(JSON.stringify(st.state[k], null, 1))+'</div>';
+    });
+
+    h += '<div class="lbl">3. Stores after this node (for '+esc(s.event.account_id)+')</div>';
+    h += '<div class="kv same">borrower_state: '+esc(JSON.stringify(st.store))+'</div>';
+    h += '<div class="kv same">contact_log rows: '+esc(JSON.stringify(st.contacts))+'</div>';
+
+    h += '<div class="lbl">4. Added to decision_log by this node</div>';
+    h += st.log.length ? st.log.map(function(l){return '<div class="kv ch">'+esc(l)+'</div>'}).join('')
+                       : '<div class="kv same">nothing</div>';
+    $('detail').innerHTML = h;
+    paint();
+  }
+  function move(d){var n=S[cur].steps.length; step=Math.max(0,Math.min(n-1,step+d)); draw();}
+  $('prev').onclick=function(){move(-1)}; $('next').onclick=function(){move(1)};
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight') move(1); if(e.key==='ArrowLeft') move(-1);
+  });
+  draw();
+})();
+</script>
+</body>
+</html>

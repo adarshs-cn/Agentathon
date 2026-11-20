@@ -1,0 +1,36 @@
+lender_id,agent,agent_type,bucket,allowed,allowed_channels,allowed_actions,owner_priority_rank,borrower_contact,override_note
+L01,reminder_agent,ai_agent,0,Y,sms|whatsapp|email|call,pre_due_reminder|emi_due_reminder|ptp_reminder,1,Y,
+L01,reminder_agent,ai_agent,1-30,Y,sms|whatsapp|email|call,overdue_reminder|ptp_capture|ptp_reminder,2,Y,
+L01,reminder_agent,ai_agent,31-60,Y,sms|whatsapp|email,overdue_reminder,5,Y,
+L01,reminder_agent,ai_agent,61-90,N,,,,N,
+L01,reminder_agent,ai_agent,90+,N,,,,N,
+L01,negotiation_agent,ai_agent,0,N,,,,N,exclusive owner when settlement_flag=1
+L01,negotiation_agent,ai_agent,1-30,Y,call|whatsapp|sms,ptp_capture|broken_ptp_followup,4,Y,exclusive owner when settlement_flag=1
+L01,negotiation_agent,ai_agent,31-60,Y,call|whatsapp|sms|email,ptp_capture|settlement_offer|restructure_offer,1,Y,exclusive owner when settlement_flag=1
+L01,negotiation_agent,ai_agent,61-90,Y,call|whatsapp|sms|email,ptp_capture|settlement_offer|restructure_offer,1,Y,exclusive owner when settlement_flag=1
+L01,negotiation_agent,ai_agent,90+,Y,call|sms|email,settlement_offer|restructure_offer,2,Y,exclusive owner when settlement_flag=1
+L01,servicing_agent,ai_agent,0,Y,sms|whatsapp|email|call,service_request|statement|payment_link,2,Y,
+L01,servicing_agent,ai_agent,1-30,Y,sms|whatsapp|email|call,service_request|statement|payment_link,3,Y,
+L01,servicing_agent,ai_agent,31-60,Y,sms|email|call,service_request|statement,6,Y,"reactive service requests only (borrower-initiated), no proactive outreach"
+L01,servicing_agent,ai_agent,61-90,Y,sms|email|call,service_request|statement,6,Y,"reactive service requests only (borrower-initiated), no proactive outreach"
+L01,servicing_agent,ai_agent,90+,Y,email|call,service_request|closure_letter,6,Y,"reactive service requests only (borrower-initiated), no proactive outreach"
+L01,legal_agent,ai_agent,0,N,,,,N,also allowed at any bucket when legal_flag=1
+L01,legal_agent,ai_agent,1-30,N,,,,N,also allowed at any bucket when legal_flag=1
+L01,legal_agent,ai_agent,31-60,N,,,,N,also allowed at any bucket when legal_flag=1
+L01,legal_agent,ai_agent,61-90,Y,,legal_notice_prep,9,N,also allowed at any bucket when legal_flag=1
+L01,legal_agent,ai_agent,90+,Y,email|call|sms,legal_notice|demand_notice|arbitration_intimation,1,Y,also allowed at any bucket when legal_flag=1
+L01,AGY001,external_agency,0,N,,,,N,
+L01,AGY001,external_agency,1-30,Y,call,tele_collection,3,Y,
+L01,AGY001,external_agency,31-60,Y,call|field_visit,tele_collection|field_visit,3,Y,
+L01,AGY001,external_agency,61-90,Y,call|field_visit,tele_collection|field_visit,3,Y,
+L01,AGY001,external_agency,90+,N,,,,N,
+L01,AGY002,external_agency,0,N,,,,N,
+L01,AGY002,external_agency,1-30,Y,call,tele_collection,3,Y,
+L01,AGY002,external_agency,31-60,Y,call|field_visit,tele_collection|field_visit,3,Y,
+L01,AGY002,external_agency,61-90,Y,call|field_visit,tele_collection|field_visit,3,Y,
+L01,AGY002,external_agency,90+,Y,call|field_visit,tele_collection|field_visit,4,Y,
+L01,AGY003,external_agency,0,N,,,,N,
+L01,AGY003,external_agency,1-30,N,,,,N,
+L01,AGY003,external_agency,31-60,N,,,,N,
+L01,AGY003,external_agency,61-90,Y,call|field_visit,tele_collection|field_visit,3,Y,
+L01,AGY003,external_agency,90+,Y,call|field_visit,tele_collection|field_visit,4,Y,
