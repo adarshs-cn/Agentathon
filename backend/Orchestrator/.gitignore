@@ -12,3 +12,6 @@ data/ui/
 data/day/
 data/dataset_run/
 data/service/
+voicebot_trace.jsonl
+orchestrator/agents/real/twiml_pending/
+scripts/cloudflared

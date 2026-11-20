@@ -88,6 +88,14 @@ def message_context(db, borrower_id: str, event: dict, action: str) -> dict:
         p = db.one("SELECT amount FROM ds_ptp WHERE borrower_id=? AND status='open' ORDER BY promised_date LIMIT 1", (borrower_id,))
         if p:
             ctx["amount"] = inr(p["amount"])
+    elif action == "broken_ptp_followup":
+        p = (db.one("SELECT amount, promised_date FROM ds_ptp WHERE borrower_id=? AND status='broken' "
+                     "ORDER BY promised_date DESC LIMIT 1", (borrower_id,))
+             or db.one("SELECT amount, promised_date FROM ds_ptp WHERE borrower_id=? AND status='open' "
+                        "ORDER BY promised_date DESC LIMIT 1", (borrower_id,)))
+        if p:
+            ctx["amount"] = inr(p["amount"])
+            ctx["ptp_date"] = p["promised_date"]
     elif action == "payment_confirmation":
         p = db.one("SELECT amount FROM ds_payment WHERE borrower_id=? AND status='success' ORDER BY at DESC LIMIT 1", (borrower_id,))
         if p:

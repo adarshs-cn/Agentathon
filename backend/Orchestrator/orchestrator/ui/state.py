@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 import time
@@ -35,7 +36,20 @@ from orchestrator.ui.run import RunManager
 from orchestrator.ui.runner import SimulationRunner
 
 
+<<<<<<< Updated upstream
 POOL = 15
+=======
+def _agents_override(inj) -> list | None:
+    """None keeps the pure stub trio (default_agents); set MT02_REAL_VOICE=1 (after .env is
+    loaded, before this is called) to swap in the real Twilio negotiation agent instead of
+    the voice stub. Never on by accident: nothing here calls load_env() itself, so pytest
+    runs (which never load the .env file) are unaffected."""
+    if os.environ.get("MT02_REAL_VOICE") != "1":
+        return None
+    from orchestrator.agents.real.negotiation import NegotiationAgent
+    from orchestrator.agents.stubs import EmailAgent, WhatsAppAgent
+    return [WhatsAppAgent(inj), EmailAgent(inj), NegotiationAgent(inj)]
+>>>>>>> Stashed changes
 
 
 class DemoState:
@@ -70,7 +84,8 @@ class DemoState:
             self.runner.control("pause")
             shutil.rmtree(self.data_dir, ignore_errors=True)
             inj = FaultInjector({})
-            sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor)
+            sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor,
+                              agents=_agents_override(inj))
             sup.load_dataset(self.dataset_dir)
             if self.mode == "live":
                 pool = setup_pool(sup, AS_OF, self.seed)
@@ -117,7 +132,8 @@ class DemoState:
             return False
         with self.lock:
             inj = FaultInjector({})
-            sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor)
+            sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor,
+                              agents=_agents_override(inj))
             sup.ctx.engine = D12Policy(sup.ctx.db, sup.ctx.contacts, sup.ctx.borrowers, sup.ctx.registry, sup.ctx.policy)
             if self.mode == "scenario":
                 self.scenario_rows = [dict(r) for r in sup.ctx.db.query("SELECT * FROM demo_event ORDER BY seq")]

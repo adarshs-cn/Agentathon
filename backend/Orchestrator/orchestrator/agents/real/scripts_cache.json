@@ -1,0 +1,6 @@
+{
+  "reminder:en": "Hello {name}, this is a reminder that your EMI of {emi_amount} is due on {due_date}. Please keep at least this balance in your account before the due date so the payment goes through. Thank you.",
+  "reminder:hi": "नमस्ते {name}, आपकी {emi_amount} की EMI {due_date} को देय है। कृपया उस तारीख से पहले अपने खाते में पर्याप्त राशि रखें ताकि भुगतान आसानी से हो सके। धन्यवाद।",
+  "negotiation:en": "Hello {name}, this is your collections assistant. You promised to pay {ptp_amount} on {ptp_date}, but we have not received it yet. When can you pay at the earliest? Please share a new date and we will note it.",
+  "negotiation:hi": "नमस्ते {name}, आपने {ptp_date} को {ptp_amount} देने का वादा किया था, लेकिन हमें वह भुगतान नहीं मिला। कृपया बताएं आप इसे सबसे पहले कब जमा कर सकते हैं? हम आपकी नई तारीख नोट कर लेंगे।"
+}
