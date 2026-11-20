@@ -24,6 +24,20 @@ export const POS = {
   recover: [1390, 1230],
 };
 
+// Older backends used other names for the same step; map them to the current position.
+const ALIASES = { load_borrower: 'load_customer' };
+export const layoutKey = (id) => (POS[id] ? id : ALIASES[id] || id);
+
+// A step this layout does not know (a node added to the LangGraph later) is placed in a spare row at the bottom of the
+// canvas, in the order it is first seen, so it is always on screen and never stacked at the corner.
+const spare = new Map();
+export function posOf(id) {
+  const p = POS[layoutKey(id)];
+  if (p) return p;
+  if (!spare.has(id)) spare.set(id, [200 + spare.size * 230, VIEW.h - 70]);
+  return spare.get(id);
+}
+
 const isTerminal = (id) => id.startsWith('__');
 const hw = (id) => (isTerminal(id) ? TERMINAL_R : NODE.w / 2);
 const hh = (id) => (isTerminal(id) ? TERMINAL_R : NODE.h / 2);
@@ -31,9 +45,11 @@ const CHANNELS = ['whatsapp', 'email', 'voice'];
 const SPINE = ['validate_event', 'load_customer', 'guardrails', 'route', 'assign'];
 
 // An SVG path (cubic Bézier) for one edge, plus the point to place a moving pulse on.
-export function edgePath(from, to) {
-  const [x1, y1] = POS[from] || [0, 0];
-  const [x2, y2] = POS[to] || [0, 0];
+export function edgePath(rawFrom, rawTo) {
+  const [x1, y1] = posOf(rawFrom);
+  const [x2, y2] = posOf(rawTo);
+  const from = layoutKey(rawFrom);
+  const to = layoutKey(rawTo);
   const dx = x2 - x1;
   const dy = y2 - y1;
 
@@ -97,7 +113,7 @@ export function edgePath(from, to) {
 
 // Camera: a transform that puts (x, y) at the centre of the view at `scale`.
 export function cameraOn(id, scale) {
-  if (!id || !POS[id]) return { x: 0, y: 0, scale: 1 };
-  const [x, y] = POS[id];
+  if (!id) return { x: 0, y: 0, scale: 1 };
+  const [x, y] = posOf(id);
   return { x: VIEW.w / 2 - x * scale, y: VIEW.h / 2 - y * scale, scale };
 }

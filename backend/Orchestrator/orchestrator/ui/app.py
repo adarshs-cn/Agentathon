@@ -55,6 +55,17 @@ def create_dashboard_app(state: DemoState, demo: DemoState | None = None) -> Fas
             raise HTTPException(404, "this server has no live monitor")
         return state.monitor.status()
 
+    @app.get("/api/monitor/watched")
+    def monitor_watched():
+        if state.monitor is None:
+            raise HTTPException(404, "this server has no live monitor")
+        from orchestrator.ui.monitor import watched
+        from orchestrator.ui.reasons import OUTCOME_WORDS
+        items = watched(state.reader)
+        for i in items:
+            i["last_outcome_label"] = OUTCOME_WORDS.get(i["last_outcome"], i["last_outcome"]) if i["last_outcome"] else None
+        return {"items": items}
+
     @app.post("/api/monitor/{action}")
     def monitor_control(action: str):
         if state.monitor is None:

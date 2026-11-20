@@ -9,9 +9,19 @@ import CallMadeIcon from '@mui/icons-material/CallMade';
 import BlockIcon from '@mui/icons-material/Block';
 import StatTile from '../components/StatTile';
 import TileDrawer from '../components/TileDrawer';
+import StatusStrip from '../components/live/StatusStrip';
+import HowToRead from '../components/live/HowToRead';
+import LiveFeed from '../components/live/LiveFeed';
+import WatchedCustomers from '../components/live/WatchedCustomers';
+import OutcomesByHour from '../components/live/OutcomesByHour';
+import WhyStopped from '../components/live/WhyStopped';
+import ChannelMix from '../components/live/ChannelMix';
+import RecentRecoveries from '../components/live/RecentRecoveries';
 import { useOverview } from '../hooks/useOverview';
 import { tokens } from '../theme/muiTheme';
 
+const ROW_A = { display: 'grid', gap: 2, alignItems: 'stretch', gridTemplateColumns: { xs: '1fr', lg: '5fr 7fr' } };
+const ROW_B = { display: 'grid', gap: 2, alignItems: 'stretch', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr', lg: '2fr 1.4fr 1.1fr' } };
 const TILE_GRID = { display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' } };
 
 // Overview: the live (real, monitored) numbers. The demo walkthrough lives in the Workflow Studio.
@@ -35,6 +45,8 @@ export default function Overview() {
 
   return (
     <Stack spacing={2.5}>
+      <HowToRead />
+      <StatusStrip monitor={data.monitor} />
       <Box sx={TILE_GRID}>
         <Box>
           <StatTile icon={GavelIcon} label="Conflicting contacts" value={counters.conflicting_contacts} sub={conflictOk ? 'Target 0: met' : 'Target 0: breached'}
@@ -59,6 +71,19 @@ export default function Overview() {
           <StatTile icon={BlockIcon} label="Stopped or waiting" value={counters.blocked_or_deferred} sub="Click to see why" accent={tokens.statusDegraded} onClick={() => setTile('blocked')} />
         </Box>
       </Box>
+
+      <Box sx={ROW_A}>
+        <LiveFeed events={data.recent_decisions} />
+        {data.monitor && <WatchedCustomers />}
+      </Box>
+
+      <Box sx={ROW_B}>
+        <OutcomesByHour timeline={data.timeline} />
+        <WhyStopped rules={data.rules_cited} />
+        <ChannelMix mix={data.channel_mix} />
+      </Box>
+
+      <RecentRecoveries />
 
       <TileDrawer tile={tile} onClose={() => setTile(null)} onPickEvent={(id) => { setTile(null); navigate(`/runs?highlight=${encodeURIComponent(id)}`); }} />
     </Stack>

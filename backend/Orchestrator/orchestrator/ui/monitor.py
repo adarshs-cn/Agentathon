@@ -148,3 +148,33 @@ class LiveMonitor:
                 "now": now.isoformat(timespec="seconds"), "pool_size": pool["n"], "pool_handled": handled, "waiting": waiting,
                 "processed": self.processed, "next_event_at": datetime.fromtimestamp(pool["nxt"]).isoformat(timespec="seconds") if pool["nxt"] else None,
                 "opens_at": opens, "error": self.last_error}
+
+
+def watched(db, now: datetime | None = None) -> list[dict]:
+    """The pool, one row per watched customer: the account it is watched on, who owns the customer now, the last
+    contact, the latest finished run and when the next event falls due. Read-only."""
+    now = now or datetime.now()
+    rows = []
+    for r in db.query(
+            "SELECT m.customer_id, m.account_id, m.next_due, m.events, a.dpd, a.product, p.name_masked, "
+            "s.owner, s.lease_owner, s.lease_until, s.status "
+            "FROM monitor_pool m LEFT JOIN account a ON a.account_id = m.account_id "
+            "LEFT JOIN customer p ON p.customer_id = m.customer_id "
+            "LEFT JOIN customer_state s ON s.customer_id = m.customer_id ORDER BY m.next_due"):
+        d = dict(r)
+        last = db.one("SELECT MAX(at) t FROM contact_log WHERE customer_id=? AND status IN ('SENT','ATTEMPTING')",
+                      (d["customer_id"],))
+        run = db.one("SELECT outcome, channel, finished_wall, fault FROM journey_run WHERE customer_id=? "
+                     "ORDER BY finished_wall DESC LIMIT 1", (d["customer_id"],))
+        lease_live = d["lease_owner"] and d["lease_until"] and d["lease_until"] > now.isoformat()
+        d["owner"] = d["owner"] or (d["lease_owner"] if lease_live else None)
+        d["last_contact"] = last["t"] if last else None
+        d["last_outcome"] = run["outcome"] if run else None
+        d["last_channel"] = run["channel"] if run else None
+        d["last_fault"] = run["fault"] if run else None
+        d["last_run_at"] = datetime.fromtimestamp(run["finished_wall"]).isoformat(timespec="seconds") if run else None
+        d["next_due_at"] = datetime.fromtimestamp(d["next_due"]).isoformat(timespec="seconds") if d["next_due"] else None
+        for k in ("next_due", "lease_owner", "lease_until"):
+            d.pop(k, None)
+        rows.append(d)
+    return rows

@@ -16,7 +16,7 @@ import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
-import { POS, NODE, TERMINAL_R, VIEW, edgePath, cameraOn } from './studioLayout';
+import { NODE, TERMINAL_R, VIEW, edgePath, cameraOn, posOf, layoutKey } from './studioLayout';
 import { edgeState, nodeState } from './studioLogic';
 import { C } from './studioTheme';
 
@@ -34,8 +34,8 @@ const STROKE = { idle: C.line, pending: C.line, done: C.green, active: C.cyan, f
 
 function Node({ meta, state, hovered, pinned, dimmedByHover, onHover, onPin, reduced, label }) {
   const id = meta.id;
-  const [x, y] = POS[id] || [0, 0];
-  const Icon = ICONS[id] || TaskAltIcon;
+  const [x, y] = posOf(id);
+  const Icon = ICONS[layoutKey(id)] || TaskAltIcon;
   const terminal = id.startsWith('__');
   const big = state === 'active' ? ACTIVE_SCALE : hovered ? HOVER_SCALE : 1;
   const opacity = dimmedByHover ? 0.18 : state === 'pending' ? 0.1 : state === 'done' || state === 'stop' ? 0.62 : 1;

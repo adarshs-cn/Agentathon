@@ -10,7 +10,7 @@ reads ALL the rows of one processed event and emits the few lines a person wants
     CONTACT_ATTEMPTED    the channel agent was called: what came back
     FAULT_DETECTED       the agent crashed, hung, looped or returned junk
     RECOVERY_ACTION      what the monitor decided to do about it
-    COMMITMENT_RECORDED  the result was written to the borrower's file
+    COMMITMENT_RECORDED  the result was written to the customer's file
 
 Everything is derived from the log, so what the dashboard shows is exactly what is stored.
 """
@@ -75,7 +75,7 @@ def ui_events_for(rows: list[dict]) -> list[dict]:
                 emit("OWNER_ASSIGNED", d.get("to") or agent or "supervisor", f"handoff {d.get('from')} → {d.get('to')}",
                      d.get("why") or text)
             else:
-                emit("OWNER_ASSIGNED", agent or "supervisor", f"{agent} owns the borrower", text)
+                emit("OWNER_ASSIGNED", agent or "supervisor", f"{agent} owns the customer", text)
         elif node == "release":
             emit("OWNER_RELEASED", agent or "supervisor", "lock released", "")
         elif node in CHANNEL_NODES:

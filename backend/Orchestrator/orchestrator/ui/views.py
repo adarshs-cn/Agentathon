@@ -132,9 +132,15 @@ def rules_cited(db, limit: int = 8) -> list[dict]:
         if d.get("status") in REFUSALS:
             for rid in d.get("rule_ids") or []:
                 cnt[rid] += 1
-    desc = {r["rule_id"]: dict(r) for r in db.query("SELECT rule_id, category, description FROM ds_rule")}
-    return [{"rule_id": rid, "count": n, "category": desc.get(rid, {}).get("category"),
-             "description": desc.get(rid, {}).get("description", "")} for rid, n in cnt.most_common(limit)]
+    desc = {r["rule_id"]: dict(r) for r in db.query("SELECT rule_id, category, parameter, channel, description FROM ds_rule")}
+    from orchestrator.ui import reasons
+    out = []
+    for rid, n in cnt.most_common(limit):
+        row = desc.get(rid, {})
+        headline, why = reasons.label(rid, row or None)
+        out.append({"rule_id": rid, "count": n, "category": row.get("category"), "description": row.get("description", ""),
+                    "headline": headline, "why": why})
+    return out
 
 
 def channel_mix(db) -> list[dict]:

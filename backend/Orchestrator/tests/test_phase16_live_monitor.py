@@ -114,3 +114,18 @@ def test_scripted_faults_on_the_pool_are_recovered_and_raise_notices(tmp_path):
     assert n["unseen"] == 2 and all(i["fault"] and i["recovery_action"] for i in n["items"])
     ov = c.get("/api/overview").json()["counters"]
     assert ov["faults_injected"] >= 2 and ov["faults_recovered"] == ov["faults_injected"]
+
+
+@real
+def test_the_watched_customers_list_shows_account_owner_and_latest_run(tmp_path):
+    st = live(tmp_path)
+    c = TestClient(create_dashboard_app(st))
+    before = c.get("/api/monitor/watched").json()["items"]
+    assert len(before) == 15 and all(r["account_id"] and r["customer_id"] and r["last_outcome"] is None for r in before)
+    st.monitor.tick(_at(10, 0))
+    after = {r["customer_id"]: r for r in c.get("/api/monitor/watched").json()["items"]}
+    contacted = [r for r in after.values() if r["last_outcome"] == "CONTACTED"]
+    assert contacted and all(r["last_outcome_label"] == "Message sent" and r["last_contact"] and r["owner"] for r in contacted)
+    assert all(r["next_due_at"] for r in after.values())
+    rules = c.get("/api/overview").json()["rules_cited"]
+    assert all(r["headline"] and r["rule_id"] for r in rules)

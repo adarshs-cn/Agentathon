@@ -20,7 +20,7 @@ export default function JourneyRuns() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({});
+  const [filters, setFilters] = useState(() => (sp.get('faults_only') ? { faults_only: true } : {}));
   const [pm, setPm] = useState({ page: 0, pageSize: 25 });
   const [sort, setSort] = useState([{ field: 'finished', sort: 'desc' }]);
   const [bump, setBump] = useState(0);
