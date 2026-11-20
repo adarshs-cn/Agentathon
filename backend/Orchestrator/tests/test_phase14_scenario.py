@@ -248,3 +248,12 @@ def test_a_restart_keeps_the_run_and_only_reset_clears_it(tmp_path):
     b.runs.start("demo-02", pace_ms=0, wait=True)                         # the reopened supervisor still works
     assert c.get("/api/scenario").json()["done"] == 4
     assert c.post("/api/scenario/reset").json()["done"] == 0
+
+
+@real
+def test_walkthrough_runs_are_never_saved_as_journey_runs(tmp_path):
+    a = DemoState(tmp_path, REAL, mode="scenario")
+    for n in (1, 8, 13):
+        a.runs.start(f"demo-{n:02d}", pace_ms=0, wait=True)
+    c = TestClient(create_dashboard_app(a))
+    assert c.get("/api/journeys").json()["total"] == 0 and c.get("/api/notifications").json()["unseen"] == 0

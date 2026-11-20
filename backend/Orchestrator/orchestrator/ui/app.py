@@ -25,6 +25,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from orchestrator.ui import accounts as acct
+from orchestrator.ui import journeys as jr
+from orchestrator.ui.journeys import journey_runs
 from orchestrator.ui import demo_views
 from orchestrator.ui import views
 from orchestrator.ui.run import RunError
@@ -65,6 +67,7 @@ def create_dashboard_app(state: DemoState) -> FastAPI:
             try:
                 last_seq = await run_in_threadpool(state.max_done_seq)
                 last_counters = last_poll = 0.0
+                last_fault_id = await run_in_threadpool(jr.max_fault_id, state.reader)
                 yield "retry: 2000\n\n"
                 while True:
                     if await request.is_disconnected():
@@ -84,6 +87,9 @@ def create_dashboard_app(state: DemoState) -> FastAPI:
                         events, last_seq = await run_in_threadpool(state.new_events, last_seq)
                         for e in events:
                             yield f"event: event\ndata: {json.dumps(e)}\n\n"
+                        for n in await run_in_threadpool(jr.new_faults, state.reader, last_fault_id):
+                            last_fault_id = max(last_fault_id, n["id"])
+                            yield f"event: notify\ndata: {json.dumps(n, default=str)}\n\n"
                         if time.time() - last_counters >= 1.0:
                             last_counters = time.time()
                             snap = await run_in_threadpool(state.overview, True)
@@ -138,6 +144,19 @@ def create_dashboard_app(state: DemoState) -> FastAPI:
     @app.get("/api/accounts")
     def accounts_list(request: Request):
         return acct.list_accounts(state.reader, state.engine, dict(request.query_params), now())
+
+    @app.get("/api/journeys")
+    def journeys(request: Request):
+        return journey_runs(state.reader, dict(request.query_params))
+
+    @app.get("/api/notifications")
+    def notifications():
+        return jr.notifications(state.reader)
+
+    @app.post("/api/notifications/seen")
+    def notifications_seen(body: dict = Body(default={})):
+        n = jr.mark_seen(state.sup.ctx.db, body.get("event_ids") or None)
+        return {"marked": n, **jr.notifications(state.reader)}
 
     @app.get("/api/accounts/filter-options")
     def accounts_filter_options():

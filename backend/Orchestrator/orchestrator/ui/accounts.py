@@ -197,3 +197,4 @@ def borrower_state(db, engine, any_id: str, now: datetime) -> dict | None:
         "ptps": [{"promised_date": p["promised_date"], "amount": p["amount"], "status": p["status"],
                   "captured_by": p["captured_by"]} for p in sorted(f.ptps, key=lambda x: x["promised_date"], reverse=True)[:6]],
     }
+

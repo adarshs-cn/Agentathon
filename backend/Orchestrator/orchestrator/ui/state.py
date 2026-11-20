@@ -122,7 +122,18 @@ class DemoState:
         self.sup = sup
 
     def reset(self) -> None:
+        """Reset clears the walkthrough only. Saved real journey runs (and their unseen notices) are carried over."""
+        keep = []
+        if self.mode == "scenario":
+            try:
+                keep = [dict(r) for r in self.reader.query("SELECT * FROM journey_run")]
+            except Exception:  # noqa: BLE001
+                keep = []
         self.build()
+        for r in keep:
+            r.pop("id", None)
+            cols = ",".join(r)
+            self.sup.ctx.db.execute(f"INSERT OR REPLACE INTO journey_run({cols}) VALUES ({','.join('?' * len(r))})", tuple(r.values()))
 
     # ---------------------------------------------------------------- time
     def sim_now(self) -> datetime:

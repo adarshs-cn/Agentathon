@@ -85,6 +85,16 @@ CREATE TABLE IF NOT EXISTS run_step (              -- one row per node of an ad-
     owner_before TEXT, owner_after TEXT, did TEXT, label TEXT, rule_ids TEXT, data TEXT,
     PRIMARY KEY (event_id, seq));
 
+CREATE TABLE IF NOT EXISTS journey_run (           -- one row per finished REAL journey run (kept across restarts)
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL, borrower_id TEXT, event_type TEXT, event_time TEXT,
+    outcome TEXT, channel TEXT, role TEXT, owner_after TEXT, rule_ids TEXT, summary TEXT,
+    fault TEXT, fault_agent TEXT, recovery_action TEXT, recovery_reason TEXT,   -- set only when a fault happened
+    notify_seen INTEGER NOT NULL DEFAULT 1,        -- 0 = a fault+recovery the collections manager has not looked at yet
+    started_wall REAL, finished_wall REAL, duration_ms REAL, attempts INTEGER);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_journey_event ON journey_run(event_id);
+CREATE INDEX IF NOT EXISTS ix_journey_wall ON journey_run(finished_wall);
+
 CREATE TABLE IF NOT EXISTS demo_event (            -- the scenario: one row per demo event
     seq INTEGER PRIMARY KEY, key TEXT, label TEXT, event_id TEXT, borrower_id TEXT, event_type TEXT,
     depends_on INTEGER, note TEXT);

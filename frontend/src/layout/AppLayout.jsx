@@ -1,39 +1,38 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Box,
   Stack,
   Typography,
   Avatar,
   Tooltip,
-  Snackbar,
-  Alert,
-  Button,
 } from '@mui/material';
 import TowerControlIcon from '@mui/icons-material/CellTower';
 import ViewListIcon from '@mui/icons-material/ViewListOutlined';
-import SearchIcon from '@mui/icons-material/PersonSearch';
-import ReportProblemIcon from '@mui/icons-material/ReportProblemOutlined';
-import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
-import HandshakeIcon from '@mui/icons-material/HandshakeOutlined';
-import SpeedIcon from '@mui/icons-material/SpeedOutlined';
+import HistoryIcon from '@mui/icons-material/History';
 import ListAltIcon from '@mui/icons-material/ListAltOutlined';
 import { tokens } from '../theme/muiTheme';
 import { OVERVIEW_TITLE } from '../config/labels';
 import SimClockMini from '../components/SimClockMini';
-import BorrowerSearch from '../components/BorrowerSearch';
-import { useSim } from '../context/simState';
+import NotificationBell, { FaultToast } from '../components/NotificationBell';
 
-const NAV_ITEMS = [
-  { to: '/', label: OVERVIEW_TITLE, icon: TowerControlIcon, end: true },
-  { to: '/accounts', label: 'Accounts', icon: ViewListIcon },
-  { to: '/trace', label: 'Borrower Trace', icon: SearchIcon },
-  { to: '/faults', label: 'Faults & Recovery', icon: ReportProblemIcon },
-  { to: '/agents', label: 'Agents', icon: SmartToyIcon },
-  { to: '/ownership', label: 'Ownership', icon: HandshakeIcon },
-  { to: '/budgets', label: 'Budgets', icon: SpeedIcon },
-  { to: '/decisions', label: 'Decision Log', icon: ListAltIcon },
+const NAV_GROUPS = [
+  {
+    module: 'Journey Supervisor',
+    items: [
+      { to: '/', label: OVERVIEW_TITLE, icon: TowerControlIcon, end: true },
+      { to: '/runs', label: 'Journey Runs', icon: HistoryIcon },
+      { to: '/decisions', label: 'Decision Log', icon: ListAltIcon },
+    ],
+  },
+  {
+    module: 'Loan Management',
+    items: [
+      { to: '/accounts', label: 'Accounts', icon: ViewListIcon },
+    ],
+  },
 ];
+const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items).concat([{ to: '/trace', label: 'Borrower Trace' }]);
 
 const RAIL_WIDTH = 56;
 const EXPANDED_WIDTH = 230;
@@ -48,8 +47,6 @@ function pageTitle(pathname) {
 export default function AppLayout() {
   const [expanded, setExpanded] = useState(false);
   const location = useLocation();
-  const { lastFault, clearFault } = useSim();
-  const navigate = useNavigate();
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -86,7 +83,16 @@ export default function AppLayout() {
         </Stack>
 
         <Stack sx={{ mt: 1, flex: 1 }}>
-          {NAV_ITEMS.map((item) => {
+          {NAV_GROUPS.map((g) => (
+          <Box key={g.module} sx={{ mb: 1 }}>
+            {expanded ? (
+              <Typography sx={{ fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', opacity: 0.6, px: 2, py: 0.6 }}>
+                {g.module}
+              </Typography>
+            ) : (
+              <Box sx={{ mx: 1.5, my: 0.6, borderTop: '1px solid rgba(255,255,255,0.2)' }} />
+            )}
+          {g.items.map((item) => {
             const Icon = item.icon;
             const active = item.end
               ? location.pathname === item.to
@@ -134,6 +140,8 @@ export default function AppLayout() {
               </Tooltip>
             );
           })}
+          </Box>
+        ))}
         </Stack>
 
         <Box
@@ -169,7 +177,7 @@ export default function AppLayout() {
           </Typography>
           <Stack direction="row" alignItems="center" spacing={2}>
             <SimClockMini />
-            <BorrowerSearch />
+            <NotificationBell />
             <Typography sx={{ fontSize: 11, color: tokens.statLabelGrey, display: { xs: 'none', lg: 'block' } }}>
               Judge demo build &middot; all data synthetic
             </Typography>
@@ -198,33 +206,7 @@ export default function AppLayout() {
         </Box>
       </Box>
 
-      <Snackbar
-        open={!!lastFault}
-        autoHideDuration={6000}
-        onClose={clearFault}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert
-          severity="warning"
-          variant="filled"
-          onClose={clearFault}
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                navigate(`/trace?account=${lastFault.account_id}`);
-                clearFault();
-              }}
-            >
-              Open trace
-            </Button>
-          }
-          sx={{ alignItems: 'center', fontSize: 12 }}
-        >
-          Fault detected: {lastFault?.decision} on {lastFault?.agent} for {lastFault?.account_id}. The supervisor is recovering it.
-        </Alert>
-      </Snackbar>
+      <FaultToast />
     </Box>
   );
 }

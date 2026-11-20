@@ -12,6 +12,9 @@ dedupe on the idempotency key), so a repeated node cannot double-contact anyone.
 """
 from __future__ import annotations
 
+import json
+import time
+
 import sqlite3
 import threading
 from pathlib import Path
@@ -135,11 +138,47 @@ class Supervisor:
         self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("account_id") or "", "supervisor",
                                f"re-scheduled as {nxt['id']} for {nxt['time']} ({', '.join(outcome.get('rule_ids') or [])})")
 
+    def _record_run(self, ev: dict, state: Optional[dict], t0: float) -> None:
+        """Save one row per finished REAL journey (the Journey Runs screen reads it; it survives restarts).
+        Walkthrough (demo) events are never saved here. A fault and its recovery are read from the decision log."""
+        try:
+            db, now = self.ctx.db, time.time()
+            if db.one("SELECT 1 FROM demo_event WHERE event_id=?", (ev["id"],)) is not None:
+                return
+            st = state or {}
+            out, dec = st.get("outcome") or {"status": "FAILED"}, st.get("decision") or {}
+            ids = out.get("rule_ids") or dec.get("rule_ids") or []
+            logs = db.query("SELECT node, text, data FROM decision_log WHERE event_id=? ORDER BY id", (ev["id"],))
+            summary = logs[-1]["text"] if logs else None
+            fault = agent = action = reason = None
+            for r in logs:
+                d = json.loads(r["data"]) if r["data"] else {}
+                if r["node"] == "validate_output" and (r["text"].startswith("FAULT") or r["text"].startswith("fault already")) and not fault:
+                    fault = d.get("type") or r["text"].rsplit(":", 1)[-1].strip().split(" ")[-1]
+                    agent = (st.get("decision") or {}).get("agent")
+                elif r["node"] == "monitor":
+                    action, reason = d.get("action"), d.get("reason") or r["text"]
+            c = db.one("SELECT channel FROM contact_log WHERE event_id=? AND status IN ('SENT','ATTEMPTING') LIMIT 1", (ev["id"],))
+            q = db.one("SELECT attempts FROM event_queue WHERE event_id=?", (ev["id"],))
+            ok = out.get("status") not in ("BLOCKED", "FAILED")
+            db.execute(
+                "INSERT OR REPLACE INTO journey_run(event_id, borrower_id, event_type, event_time, outcome, channel, role, "
+                "owner_after, rule_ids, summary, fault, fault_agent, recovery_action, recovery_reason, notify_seen, "
+                "started_wall, finished_wall, duration_ms, attempts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ev["id"], ev.get("account_id"), ev.get("type"), ev.get("time"), out.get("status"),
+                 c["channel"] if c else None, dec.get("role"), dec.get("role") if ok else None, json.dumps(ids), summary,
+                 fault, agent, action, reason, 0 if fault else 1, t0, now, round((now - t0) * 1000, 1),
+                 q["attempts"] if q else None))
+        except Exception:  # noqa: BLE001  - a logging problem must never fail a journey
+            pass
+
     def process_next(self, until: str | None = None) -> Optional[dict]:
         ev = self.ctx.bus.claim_next(until)
         if ev is None:
             return None
+        t0 = time.time()
         state = self._execute(ev)
+        self._record_run(ev, state, t0)
         if state is None:
             return {"event": ev, "outcome": {"status": "FAILED"}}
         self.ctx.bus.mark_done(ev["id"], state["outcome"]["status"])
@@ -154,7 +193,9 @@ class Supervisor:
             ev = self.ctx.bus.claim(event_id)
             if ev is None:
                 return None
+            t0 = time.time()
             state = self._execute(ev)
+            self._record_run(ev, state, t0)
             if state is None:
                 return {"event": ev, "outcome": {"status": "FAILED"}, "state": None}
             self.ctx.bus.mark_done(ev["id"], state["outcome"]["status"])

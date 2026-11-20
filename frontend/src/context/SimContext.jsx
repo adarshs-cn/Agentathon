@@ -13,6 +13,10 @@ export function SimProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [tick, setTick] = useState(0);
   const [lastFault, setLastFault] = useState(null);
+  const [notifs, setNotifs] = useState({ unseen: 0, items: [] });
+  const [toast, setToast] = useState(null);
+  const refreshNotifs = useCallback(() => api.notifications().then(setNotifs).catch(() => {}), []);
+  const markSeen = useCallback((ids) => api.notificationsSeen(ids).then(setNotifs).catch(() => {}), []);
   const dirty = useRef(false);
   const runSubs = useRef(new Set());
   const subscribeRun = useCallback((fn) => {
@@ -34,6 +38,7 @@ export function SimProvider({ children }) {
 
   useEffect(() => {
     load();
+    refreshNotifs();
     const es = new EventSource(api.streamUrl());
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);
@@ -66,7 +71,15 @@ export function SimProvider({ children }) {
       });
     });
 
+    // A real run hit a fault and the supervisor recovered it: drop a notice and bump the bell.
+    es.addEventListener('notify', (msg) => {
+      setToast(JSON.parse(msg.data));
+      refreshNotifs();
+      dirty.current = true;
+    });
+
     es.addEventListener('reset', () => {
+      refreshNotifs();
       setData(null);
       setLastFault(null);
       load();
@@ -85,7 +98,7 @@ export function SimProvider({ children }) {
       clearInterval(timer);
       es.close();
     };
-  }, [load]);
+  }, [load, refreshNotifs]);
 
   const simControl = useCallback(
     async (action, body) => {
@@ -102,7 +115,7 @@ export function SimProvider({ children }) {
   );
 
   return (
-    <SimCtx.Provider value={{ data, error, connected, simControl, subscribeRun, tick, lastFault, clearFault: () => setLastFault(null) }}>
+    <SimCtx.Provider value={{ data, error, connected, simControl, subscribeRun, tick, lastFault, clearFault: () => setLastFault(null), notifs, toast, clearToast: () => setToast(null), markSeen }}>
       {children}
     </SimCtx.Provider>
   );
