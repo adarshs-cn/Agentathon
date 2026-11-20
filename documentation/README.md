@@ -24,6 +24,7 @@ removed or tucked into an in-place drawer, and the side navigation shrinks.
 | 07 | [Frontend plan](07-frontend-plan.md) | Components, graph drawing, animation spec, navigation, theme rules |
 | 08 | [Delivery phases and tests](08-delivery-phases-and-tests.md) | Order of work, acceptance criteria, how each phase is verified |
 | 09 | [Open questions](09-open-questions.md) | Decisions only you can make (the first three block the work) |
+| 10 | [Handoff context](10-handoff-context.md) | End-to-end summary of what is built, how it runs, decisions, open items: start here if you are new |
 
 ## Decisions needed before work starts
 
