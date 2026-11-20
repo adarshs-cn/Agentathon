@@ -53,11 +53,15 @@ class NegotiationAgent(ChannelAgent):
         self._outbox[req.idempotency_key] = "SENT"
         if res.get("status") not in ("dry_run", "skipped_duplicate"):   # only count a real, newly-placed call
             self._placed += 1
+        # "message" must be the full {channel, to, subject, body} dict, matching the stub's
+        # convention -- contacts.mark_sent() does (message or {}).get("to") on it, so passing
+        # just the script string here crashes validate_output AFTER the call already went out.
+        message = {"channel": "voice", "to": payload["phone"], "subject": None, "body": res.get("script")}
         if res.get("script"):
-            self._sent_text[req.idempotency_key] = res["script"]
+            self._sent_text[req.idempotency_key] = message
         return {"account_id": req.account_id, "status": "DONE", "outcome": "CONTACTED",
                 "channel": "voice", "provider_ref": res.get("call_sid") or res.get("idempotency_key"),
-                "message": res.get("script")}
+                "message": message}
 
     def sent_message(self, idempotency_key: str):
         return self._sent_text.get(idempotency_key)

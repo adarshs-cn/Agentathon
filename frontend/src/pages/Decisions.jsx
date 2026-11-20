@@ -17,7 +17,7 @@ import { tokens } from '../theme/muiTheme';
 
 const OUTCOMES = ['CONTACTED', 'BLOCKED', 'SUPPRESSED', 'DEFERRED', 'ESCALATED', 'REJECTED'];
 const TYPES = ['DUE_SOON', 'OVERDUE', 'PTP_DUE', 'PTP_BROKEN', 'PAYMENT_RECEIVED', 'CONTACT_REQUESTED', 'SERVICE_REQUEST'];
-const AGENTS = ['whatsapp', 'email', 'voice'];
+const AGENTS = ['email', 'voice'];
 
 function Detail({ row, onClose }) {
   const navigate = useNavigate();

@@ -39,16 +39,47 @@ from orchestrator.ui.runner import SimulationRunner
 POOL = 15
 
 
-def _agents_override(inj) -> list | None:
-    """None keeps the pure stub trio (default_agents); set MT02_REAL_VOICE=1 (after .env is
-    loaded, before this is called) to swap in the real Twilio negotiation agent instead of
-    the voice stub. Never on by accident: nothing here calls load_env() itself, so pytest
-    runs (which never load the .env file) are unaffected."""
-    if os.environ.get("MT02_REAL_VOICE") != "1":
+def _agents_override(inj, mode: str) -> list | None:
+    """None keeps the pure stub trio (default_agents). Each real channel is opted into
+    independently: MT02_REAL_VOICE=1 swaps in the real Twilio negotiation agent for voice,
+    MT02_REAL_EMAIL=1 swaps in the real Brevo email agent for email -- set either or both
+    (after .env is loaded, before this is called). Never on by accident: nothing here calls
+    load_env() itself, so pytest runs (which never load the .env file) are unaffected.
+
+    Real channels only ever activate in 'scenario' mode by default -- the only mode with a
+    human clicking Run on one event at a time. 'day' and 'live' mode have no such checkpoint:
+    day has a clock that drains the whole queue on its own, and live is a standing background
+    worker that contacts a pool of real borrowers whenever they fall inside the contact
+    window, with no button at all. Wiring a real channel into either means it keeps acting
+    unattended, with no human in the loop -- so each channel needs its OWN separate
+    acknowledgement to do that, rather than one blanket switch: MT02_REAL_EMAIL_IN_AUTO_MODES=1
+    / MT02_REAL_VOICE_IN_AUTO_MODES=1. Enabling one does not imply the other."""
+    real_voice = os.environ.get("MT02_REAL_VOICE") == "1"
+    real_email = os.environ.get("MT02_REAL_EMAIL") == "1"
+    if not (real_voice or real_email):
         return None
-    from orchestrator.agents.real.negotiation import NegotiationAgent
-    from orchestrator.agents.stubs import EmailAgent, WhatsAppAgent
-    return [WhatsAppAgent(inj), EmailAgent(inj), NegotiationAgent(inj)]
+    if mode != "scenario":
+        real_voice = real_voice and os.environ.get("MT02_REAL_VOICE_IN_AUTO_MODES") == "1"
+        real_email = real_email and os.environ.get("MT02_REAL_EMAIL_IN_AUTO_MODES") == "1"
+        if not (real_voice or real_email):
+            return None
+    from orchestrator.agents.stubs import EmailAgent, VoiceAgent
+    if real_email:
+        from orchestrator.agents.real.email import RealEmailAgent
+        email = RealEmailAgent(inj)
+    else:
+        email = EmailAgent(inj)
+    if real_voice:
+        from orchestrator.agents.real.negotiation import NegotiationAgent
+        voice = NegotiationAgent(inj)
+    else:
+        voice = VoiceAgent(inj)
+    # WhatsApp is deliberately NOT registered here: no real WhatsApp agent exists, and the
+    # user doesn't want the fake stub called either while real voice/email are active. D12
+    # already handles an unregistered channel-agent as "unavailable" and falls through to the
+    # next channel in preference order (see eval_channel: "the whatsapp agent is not
+    # registered" -> BLOCKED, not a compliance failure) -- no routing change needed for this.
+    return [email, voice]
 
 
 class DemoState:
@@ -85,7 +116,7 @@ class DemoState:
             shutil.rmtree(self.data_dir, ignore_errors=True)
             inj = FaultInjector({})
             sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor,
-                              agents=_agents_override(inj))
+                              agents=_agents_override(inj, self.mode))
             sup.load_dataset(self.dataset_dir)
             if self.mode == "live":
                 pool = setup_pool(sup, AS_OF, self.seed)
@@ -133,7 +164,7 @@ class DemoState:
         with self.lock:
             inj = FaultInjector({})
             sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor,
-                              agents=_agents_override(inj))
+                              agents=_agents_override(inj, self.mode))
             sup.ctx.engine = D12Policy(sup.ctx.db, sup.ctx.contacts, sup.ctx.borrowers, sup.ctx.registry, sup.ctx.policy)
             if self.mode == "scenario":
                 self.scenario_rows = [dict(r) for r in sup.ctx.db.query("SELECT * FROM demo_event ORDER BY seq")]
