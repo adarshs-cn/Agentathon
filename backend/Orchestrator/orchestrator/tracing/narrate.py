@@ -21,7 +21,7 @@ class Narrator:
             self._current = eid
             q = self.ctx.bus.get(eid) or {}
             self.out("")
-            self.out(f"== EVENT {eid}  {q.get('type', '?')}  account={row['account_id'] or '-'}  "
+            self.out(f"== EVENT {eid}  {q.get('type', '?')}  account={row['customer_id'] or '-'}  "
                      f"@ {q.get('event_time') or row['ts']}")
         for line in format_step(row, self.verbose):
             self.out(line)

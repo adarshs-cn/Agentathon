@@ -75,29 +75,32 @@ def demo_contact() -> dict:
     }
 
 
-def message_context(db, borrower_id: str, event: dict, action: str) -> dict:
-    """Values a message may use. Names and numbers are never read from the personal-data columns: only the masked
-    forms and the configured demo contact."""
-    acc = db.one("SELECT * FROM ds_account WHERE borrower_id=? ORDER BY dpd DESC", (borrower_id,))
+def message_context(db, customer_id: str, event: dict, action: str) -> dict:
+    """Values a message may use. The amounts and DPD are those of the ACCOUNT the event is about (falling back to the
+    customer's worst account only if the event names none). Names and numbers are never read from the personal-data
+    columns: only the masked forms and the configured demo contact."""
+    acc = (db.one("SELECT * FROM account WHERE account_id=? AND customer_id=?", (event.get("account_id"), customer_id))
+           if event.get("account_id") else None) or db.one(
+        "SELECT * FROM account WHERE customer_id=? ORDER BY dpd DESC", (customer_id,))
     if acc is None:
         return {}
     demo = demo_contact()
     ctx = {"name": demo["name"], "emi": inr(acc["emi"]), "dues": inr(acc["total_dues"]), "dpd": acc["dpd"],
            "amount": inr(acc["emi"]), "to_phone": demo["phone"], "to_email": demo["email"]}
     if action == "ptp_reminder":
-        p = db.one("SELECT amount FROM ds_ptp WHERE borrower_id=? AND status='open' ORDER BY promised_date LIMIT 1", (borrower_id,))
+        p = db.one("SELECT amount FROM ds_ptp WHERE account_id=? AND status='open' ORDER BY promised_date LIMIT 1", (acc["account_id"],))
         if p:
             ctx["amount"] = inr(p["amount"])
     elif action == "broken_ptp_followup":
-        p = (db.one("SELECT amount, promised_date FROM ds_ptp WHERE borrower_id=? AND status='broken' "
-                     "ORDER BY promised_date DESC LIMIT 1", (borrower_id,))
-             or db.one("SELECT amount, promised_date FROM ds_ptp WHERE borrower_id=? AND status='open' "
-                        "ORDER BY promised_date DESC LIMIT 1", (borrower_id,)))
+        p = (db.one("SELECT amount, promised_date FROM ds_ptp WHERE account_id=? AND status='broken' "
+                     "ORDER BY promised_date DESC LIMIT 1", (acc["account_id"],))
+             or db.one("SELECT amount, promised_date FROM ds_ptp WHERE account_id=? AND status='open' "
+                        "ORDER BY promised_date DESC LIMIT 1", (acc["account_id"],)))
         if p:
             ctx["amount"] = inr(p["amount"])
             ctx["ptp_date"] = p["promised_date"]
     elif action == "payment_confirmation":
-        p = db.one("SELECT amount FROM ds_payment WHERE borrower_id=? AND status='success' ORDER BY at DESC LIMIT 1", (borrower_id,))
+        p = db.one("SELECT amount FROM ds_payment WHERE customer_id=? AND status='success' ORDER BY at DESC LIMIT 1", (customer_id,))
         if p:
             ctx["amount"] = inr(p["amount"])
     return ctx

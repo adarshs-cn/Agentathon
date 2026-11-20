@@ -24,7 +24,7 @@ class StubChannelAgent(ChannelAgent):
 
     def execute(self, req: ContactRequest) -> dict:
         self.calls += 1
-        fault = self.injector.next_fault(req.account_id) if self.injector else None
+        fault = self.injector.next_fault(req.customer_id) if self.injector else None
         if fault == "CRASH_BEFORE_SEND":
             raise AgentCrash(f"{self.name} agent died before sending")
         if fault == "TIMEOUT":
@@ -32,14 +32,14 @@ class StubChannelAgent(ChannelAgent):
         if fault == "MALFORMED":
             return {"oops": "garbage"}
         if fault == "LOOP":
-            return {"account_id": req.account_id, "status": "IN_PROGRESS"}
+            return {"customer_id": req.customer_id, "status": "IN_PROGRESS"}
         ref = self._deliver(req)
         if req.context:
             from orchestrator.agents.messages import render
             self.sent_text.setdefault(req.idempotency_key, render(req.action or req.purpose, self.name, dict(req.context)))
         if fault == "CRASH_AFTER_SEND":
             raise AgentCrash(f"{self.name} agent died after sending")
-        out = {"account_id": req.account_id, "status": "DONE", "outcome": "CONTACTED",
+        out = {"customer_id": req.customer_id, "status": "DONE", "outcome": "CONTACTED",
                "channel": self.name, "provider_ref": ref, "template": req.template}
         if req.idempotency_key in self.sent_text:         # the text a real agent would have sent
             out["message"] = self.sent_text[req.idempotency_key]

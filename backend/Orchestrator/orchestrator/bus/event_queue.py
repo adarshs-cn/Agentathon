@@ -6,8 +6,10 @@ infrastructure. The interface (publish / claim_next / mark_done) is what a real 
 
 Guarantees
   * publish() ignores an event id it has seen before (duplicate delivery is harmless)
+  * events arrive per ACCOUNT; publish() resolves the CUSTOMER who holds it (customer_id, '' if unknown)
   * claim_next() returns events in (event_time, arrival) order, and never hands out an
-    event for an account that already has one IN_PROGRESS (one lane per account)
+    event for a CUSTOMER who already has one IN_PROGRESS (one lane per customer: two loans of the same
+    person never run at once, so two agents can never contact them together, R035-R037)
   * a crash leaves events IN_PROGRESS, so the supervisor can find and finish them
 """
 from __future__ import annotations
@@ -26,7 +28,7 @@ class EventQueue:
 
     @staticmethod
     def _to_event(r) -> dict:
-        return {"id": r["event_id"], "type": r["type"], "account_id": r["account_id"],
+        return {"id": r["event_id"], "type": r["type"], "account_id": r["account_id"], "customer_id": r["customer_id"],
                 "time": r["event_time"], "payload": json.loads(r["payload"])}
 
     def publish(self, event: dict) -> bool:
@@ -37,11 +39,13 @@ class EventQueue:
         no id gets a generated one.
         """
         event_id = event.get("id") or f"auto-{uuid.uuid4().hex[:12]}"
+        acc = event.get("account_id") or ""
+        c = self.db.one("SELECT customer_id FROM account WHERE account_id=?", (acc,)) if acc else None
         try:
             self.db.execute(
-                "INSERT INTO event_queue(event_id, account_id, type, event_time, payload) "
-                "VALUES (?,?,?,?,?)",
-                (event_id, event.get("account_id") or "", event.get("type") or "",
+                "INSERT INTO event_queue(event_id, account_id, customer_id, type, event_time, payload) "
+                "VALUES (?,?,?,?,?,?)",
+                (event_id, acc, c["customer_id"] if c else "", event.get("type") or "",
                  event.get("time") or "", json.dumps(event.get("payload") or {})))
             return True
         except sqlite3.IntegrityError:
@@ -55,8 +59,7 @@ class EventQueue:
         (event_time <= until): that is how a simulated clock releases the day's events."""
         with self.db.transaction():
             r = self.db.one(
-                "SELECT * FROM event_queue WHERE status='PENDING' AND account_id NOT IN "
-                "(SELECT account_id FROM event_queue WHERE status='IN_PROGRESS') "
+                "SELECT * FROM event_queue WHERE status='PENDING' AND (customer_id = '' OR customer_id NOT IN (SELECT customer_id FROM event_queue WHERE status='IN_PROGRESS' AND customer_id != '')) "
                 + ("AND event_time <= ? " if until else "") + "ORDER BY event_time, seq LIMIT 1",
                 (until,) if until else ())
             if r is None:
@@ -66,11 +69,10 @@ class EventQueue:
             return self._to_event(r)
 
     def claim(self, event_id: str) -> Optional[dict]:
-        """Take one specific PENDING event (an ad-hoc run), still respecting one lane per account.
-        Returns None if it is not PENDING or the account already has an event in progress."""
+        """Take one specific PENDING event (an ad-hoc run), still respecting one lane per customer.
+        Returns None if it is not PENDING or the customer already has an event in progress."""
         with self.db.transaction():
-            r = self.db.one("SELECT * FROM event_queue WHERE event_id=? AND status='PENDING' AND account_id NOT IN "
-                            "(SELECT account_id FROM event_queue WHERE status='IN_PROGRESS')", (event_id,))
+            r = self.db.one("SELECT * FROM event_queue WHERE event_id=? AND status='PENDING' AND (customer_id = '' OR customer_id NOT IN (SELECT customer_id FROM event_queue WHERE status='IN_PROGRESS' AND customer_id != ''))", (event_id,))
             if r is None:
                 return None
             self.db.execute("UPDATE event_queue SET status='IN_PROGRESS', attempts=attempts+1 WHERE seq=?", (r["seq"],))
@@ -112,6 +114,6 @@ class EventQueue:
         r = self.db.one("SELECT * FROM event_queue WHERE event_id=?", (event_id,))
         return dict(r) if r else None
 
-    def for_account(self, account_id: str) -> list[dict]:
+    def for_customer(self, customer_id: str) -> list[dict]:
         return [dict(r) for r in self.db.query(
-            "SELECT * FROM event_queue WHERE account_id=? ORDER BY event_time, seq", (account_id,))]
+            "SELECT * FROM event_queue WHERE customer_id=? ORDER BY event_time, seq", (customer_id,))]

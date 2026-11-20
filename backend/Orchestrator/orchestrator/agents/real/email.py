@@ -62,7 +62,7 @@ class RealEmailAgent(ChannelAgent):
         # just the body string here crashes validate_output AFTER the real send already went
         # out (contact_log row stays stuck ATTEMPTING; no duplicate send on the retries that
         # follow, since they resume past the already-completed agent_node, but it's still a bug).
-        return {"account_id": req.account_id, "status": "DONE", "outcome": "CONTACTED",
+        return {"customer_id": req.customer_id, "status": "DONE", "outcome": "CONTACTED",
                 "channel": "email", "provider_ref": req.idempotency_key,
                 "template": req.template, "message": rendered}
 

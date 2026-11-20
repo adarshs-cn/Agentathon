@@ -86,7 +86,7 @@ def cmd_run(sup: Supervisor, folder: Path, a) -> int:
         print(f"  fault {f['account']}: {f['faults'][0]} -> {f['actions']} contacted={f['contacted']} status={f['status']}")
     print(f"\nLook closer:  .venv/bin/python -m scripts.trace --find blocked --data-dir {a.data_dir}")
     print(f"              .venv/bin/python -m scripts.trace --find fault   --data-dir {a.data_dir}")
-    print(f"              .venv/bin/python -m scripts.trace <borrower_id>  --data-dir {a.data_dir}")
+    print(f"              .venv/bin/python -m scripts.trace <customer_id>  --data-dir {a.data_dir}")
     return 0 if report["passed"] else 1
 
 

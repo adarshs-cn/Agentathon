@@ -1,8 +1,8 @@
 """Supervisor: the long-lived service that drives the graph from the event bus.
 
-    bus.claim_next() -> graph.invoke({"event": ...}, thread_id=account_id) -> bus.mark_done()
+    bus.claim_next() -> graph.invoke({"event": ...}, thread_id=customer_id) -> bus.mark_done()
 
-Restart safety. Two things persist across a restart: the business tables (borrower_state,
+Restart safety. Two things persist across a restart: the business tables (customer_state,
 contact_log, decision_log, event_queue) and LangGraph's checkpoints. An event that was
 mid-run when the process died is still IN_PROGRESS on the bus, and its thread's checkpoint
 says exactly which node comes next. `recover_on_start()` finishes each such event with
@@ -29,9 +29,9 @@ from orchestrator.context import Context
 from orchestrator.graph import FINAL_STAGE, build_graph
 
 
-def thread_config(account_id: str | None) -> dict:
+def thread_config(customer_id: str | None) -> dict:
     """One LangGraph thread per account: that is what makes a per-account history."""
-    return {"configurable": {"thread_id": account_id or "_invalid"}, "recursion_limit": RECURSION_LIMIT}
+    return {"configurable": {"thread_id": customer_id or "_invalid"}, "recursion_limit": RECURSION_LIMIT}
 
 
 class Supervisor:
@@ -57,7 +57,7 @@ class Supervisor:
     def load_dataset(self, folder, as_of: str | None = None) -> dict:
         """Switch to dataset mode: load D1/D2/D4/D6/D7/D10/D12/D13 and let the D12 policy engine decide.
 
-        Borrowers become the unit (event.account_id carries the borrower id)."""
+        Events arrive per account; the customer who holds it is the unit for ownership and limits."""
         from orchestrator.dataset.loader import AS_OF, load_dataset
         from orchestrator.policy.d12 import D12Policy
         report = load_dataset(self.ctx.db, self.ctx.borrowers, folder, as_of or AS_OF)
@@ -96,7 +96,7 @@ class Supervisor:
 
     def _fail_event(self, ev: dict, err: Exception, attempts: int) -> None:
         """Give up on a poison event without losing the borrower: release the lock, pause, log."""
-        acc = ev.get("account_id")
+        acc = ev.get("customer_id")
         if acc and self.ctx.borrowers.exists(acc):
             self.ctx.borrowers.release(acc)
             self.ctx.borrowers.set_status(acc, NEEDS_REVIEW)
@@ -106,14 +106,14 @@ class Supervisor:
         self.ctx.bus.mark_failed(ev["id"], repr(err))
 
     def _execute(self, ev: dict) -> Optional[dict]:
-        cfg = thread_config(ev.get("account_id"))
+        cfg = thread_config(ev.get("customer_id"))
         while True:
             try:
                 state = self._resume(ev, cfg)
                 return state if state is not None else self.graph.invoke({"event": ev}, cfg)
             except Exception as e:  # noqa: BLE001 - a bug or transient failure inside a run
                 n = self.ctx.bus.attempts(ev["id"])
-                self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("account_id") or "",
+                self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("customer_id") or "",
                                        "supervisor", f"run failed on attempt {n}: {e!r}")
                 if n >= self.ctx.policy.max_event_attempts:
                     self._fail_event(ev, e, n)
@@ -130,12 +130,12 @@ class Supervisor:
         n = (ev.get("payload") or {}).get("deferrals", 0) + 1
         origin = (ev.get("payload") or {}).get("origin", ev["id"])
         if n > self.MAX_DEFERRALS:
-            self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("account_id") or "", "supervisor",
+            self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("customer_id") or "", "supervisor",
                                    f"gave up re-scheduling after {self.MAX_DEFERRALS} deferrals")
             return
         nxt = {**ev, "id": f"{origin}~d{n}", "time": outcome["until"], "payload": {**(ev.get("payload") or {}), "deferrals": n, "origin": origin}}
         self.ctx.bus.publish(nxt)
-        self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("account_id") or "", "supervisor",
+        self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("customer_id") or "", "supervisor",
                                f"re-scheduled as {nxt['id']} for {nxt['time']} ({', '.join(outcome.get('rule_ids') or [])})")
 
     def _record_run(self, ev: dict, state: Optional[dict], t0: float) -> None:
@@ -162,10 +162,10 @@ class Supervisor:
             q = db.one("SELECT attempts FROM event_queue WHERE event_id=?", (ev["id"],))
             ok = out.get("status") not in ("BLOCKED", "FAILED")
             db.execute(
-                "INSERT OR REPLACE INTO journey_run(event_id, borrower_id, event_type, event_time, outcome, channel, role, "
-                "owner_after, rule_ids, summary, fault, fault_agent, recovery_action, recovery_reason, notify_seen, "
-                "started_wall, finished_wall, duration_ms, attempts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (ev["id"], ev.get("account_id"), ev.get("type"), ev.get("time"), out.get("status"),
+                "INSERT OR REPLACE INTO journey_run(event_id, customer_id, account_id, event_type, event_time, outcome, channel, "
+                "role, owner_after, rule_ids, summary, fault, fault_agent, recovery_action, recovery_reason, notify_seen, "
+                "started_wall, finished_wall, duration_ms, attempts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ev["id"], ev.get("customer_id"), ev.get("account_id"), ev.get("type"), ev.get("time"), out.get("status"),
                  c["channel"] if c else None, dec.get("role"), dec.get("role") if ok else None, json.dumps(ids), summary,
                  fault, agent, action, reason, 0 if fault else 1, t0, now, round((now - t0) * 1000, 1),
                  q["attempts"] if q else None))
@@ -207,13 +207,13 @@ class Supervisor:
         summary = {"resumed": 0, "finished": 0, "restarted": 0, "failed": 0}
         for ev in self.ctx.bus.in_progress():
             n = self.ctx.bus.bump(ev["id"])
-            cfg = thread_config(ev.get("account_id"))
+            cfg = thread_config(ev.get("customer_id"))
             snap = self.graph.get_state(cfg)
             vals = snap.values or {}
             same = (vals.get("event") or {}).get("id") == ev["id"]
             kind = ("resumed" if same and snap.next else "finished" if same and vals.get("outcome")
                     else "restarted")
-            self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("account_id") or "", "supervisor",
+            self.ctx.decisions.add(ev.get("time", ""), ev["id"], ev.get("customer_id") or "", "supervisor",
                                    f"restart recovery: {kind} (attempt {n})")
             if n > self.ctx.policy.max_event_attempts:
                 self._fail_event(ev, RuntimeError("too many restarts"), n)

@@ -1,8 +1,6 @@
 """SQLite wrapper and schema for the supervisor's own tables.
 
 These are the tables the supervisor owns (it never writes to the D1/D2/D4/D6 data):
-  borrower_profile  read-only facts about a borrower (stand-in for D1/D2/D4/D6)
-  borrower_state    the supervisor's record per borrower: owner, last contact, ...
   contact_log       every contact attempt, one row per borrower per day (idempotency)
   decision_log      every decision with its reason: the audit trail
   event_queue       the event bus: persisted, so events survive a restart
@@ -16,15 +14,27 @@ import threading
 from contextlib import contextmanager
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS borrower_profile (
-    account_id TEXT PRIMARY KEY,
-    dpd        INTEGER NOT NULL,
+-- Data model: a CUSTOMER (the person) has one or more ACCOUNTs (loans). Events arrive per ACCOUNT; the safety rules
+-- (one owner, contact limits, consent) apply per CUSTOMER across all their accounts (R033, R035-R038).
+CREATE TABLE IF NOT EXISTS customer (
+    customer_id TEXT PRIMARY KEY, deceased INTEGER, has_phone INTEGER, has_email INTEGER, shared_phone INTEGER,
+    name_masked TEXT, phone_masked TEXT);                -- display only: 'D*** S***' and 'XXXXXX4842'
+
+CREATE TABLE IF NOT EXISTS account (
+    account_id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, dpd INTEGER, bucket TEXT,
+    legal_flag INTEGER, settlement_flag INTEGER, restructure_flag INTEGER, emi REAL, total_dues REAL,
+    product TEXT, city TEXT, branch TEXT, loan_amount REAL, principal_outstanding REAL);
+CREATE INDEX IF NOT EXISTS ix_account_customer ON account(customer_id);
+
+CREATE TABLE IF NOT EXISTS customer_profile (     -- what the supervisor needs about the customer, across accounts
+    customer_id TEXT PRIMARY KEY,
+    dpd        INTEGER NOT NULL,                  -- worst DPD across the customer's accounts
     legal_flag INTEGER NOT NULL DEFAULT 0,
     channels   TEXT    NOT NULL DEFAULT '[]'      -- JSON list of reachable channels
 );
 
-CREATE TABLE IF NOT EXISTS borrower_state (
-    account_id   TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS customer_state (       -- the supervisor's record per customer
+    customer_id  TEXT PRIMARY KEY,
     owner        TEXT,                            -- active owner agent, NULL = nobody
     last_contact TEXT,
     commitments  TEXT NOT NULL DEFAULT '[]',      -- JSON list of open promises
@@ -35,8 +45,9 @@ CREATE TABLE IF NOT EXISTS borrower_state (
 );
 
 CREATE TABLE IF NOT EXISTS contact_log (
-    idem_key     TEXT PRIMARY KEY,                -- '<account>|<date>': one contact per day
-    account_id   TEXT NOT NULL,
+    idem_key     TEXT PRIMARY KEY,                -- '<customer>|<event>' (or '<customer>|<date>' in simple mode)
+    customer_id  TEXT NOT NULL,                   -- limits and ownership count per customer
+    account_id   TEXT,                            -- the loan this contact was about
     date         TEXT NOT NULL,
     channel      TEXT NOT NULL,
     purpose      TEXT NOT NULL,
@@ -50,26 +61,28 @@ CREATE TABLE IF NOT EXISTS contact_log (
     message_json TEXT,                            -- the message the agent sent (masked), for the dashboard
     to_masked    TEXT
 );
-CREATE INDEX IF NOT EXISTS ix_contact_account ON contact_log(account_id);
+CREATE INDEX IF NOT EXISTS ix_contact_customer ON contact_log(customer_id);
 CREATE INDEX IF NOT EXISTS ix_contact_channel_date ON contact_log(channel, date);
 
 CREATE TABLE IF NOT EXISTS decision_log (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts         TEXT,                              -- simulated/event time
-    wall       REAL,                              -- real clock, for ordering evidence
-    event_id   TEXT,
-    account_id TEXT,
-    node       TEXT,
-    text       TEXT,
-    data       TEXT
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT,                             -- simulated/event time
+    wall        REAL,                             -- real clock, for ordering evidence
+    event_id    TEXT,
+    customer_id TEXT,
+    account_id  TEXT,
+    node        TEXT,
+    text        TEXT,
+    data        TEXT
 );
-CREATE INDEX IF NOT EXISTS ix_decision_account ON decision_log(account_id, id);
+CREATE INDEX IF NOT EXISTS ix_decision_customer ON decision_log(customer_id, id);
 CREATE INDEX IF NOT EXISTS ix_decision_event ON decision_log(event_id);
 
 CREATE TABLE IF NOT EXISTS event_queue (
     seq        INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id   TEXT NOT NULL UNIQUE,              -- UNIQUE: a duplicate publish is ignored
-    account_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,                     -- events arrive per ACCOUNT (loan)
+    customer_id TEXT NOT NULL DEFAULT '',         -- resolved from the account on publish ('' = unknown account)
     type       TEXT NOT NULL,
     event_time TEXT NOT NULL,
     payload    TEXT NOT NULL DEFAULT '{}',
@@ -78,7 +91,7 @@ CREATE TABLE IF NOT EXISTS event_queue (
     attempts   INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_queue_status ON event_queue(status, event_time, seq);
-CREATE INDEX IF NOT EXISTS ix_queue_account ON event_queue(account_id);
+CREATE INDEX IF NOT EXISTS ix_queue_customer ON event_queue(customer_id, status);
 
 CREATE TABLE IF NOT EXISTS run_step (              -- one row per node of an ad-hoc run: drives hover, replay, event log
     event_id TEXT NOT NULL, seq INTEGER NOT NULL, node TEXT, station TEXT, ms REAL,
@@ -88,7 +101,7 @@ CREATE TABLE IF NOT EXISTS run_step (              -- one row per node of an ad-
 
 CREATE TABLE IF NOT EXISTS journey_run (           -- one row per finished REAL journey run (kept across restarts)
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id TEXT NOT NULL, borrower_id TEXT, event_type TEXT, event_time TEXT,
+    event_id TEXT NOT NULL, customer_id TEXT, account_id TEXT, event_type TEXT, event_time TEXT,
     outcome TEXT, channel TEXT, role TEXT, owner_after TEXT, rule_ids TEXT, summary TEXT,
     fault TEXT, fault_agent TEXT, recovery_action TEXT, recovery_reason TEXT,   -- set only when a fault happened
     notify_seen INTEGER NOT NULL DEFAULT 1,        -- 0 = a fault+recovery the collections manager has not looked at yet
@@ -97,13 +110,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_journey_event ON journey_run(event_id);
 CREATE INDEX IF NOT EXISTS ix_journey_wall ON journey_run(finished_wall);
 
 CREATE TABLE IF NOT EXISTS demo_event (            -- the scenario: one row per demo event
-    seq INTEGER PRIMARY KEY, key TEXT, label TEXT, event_id TEXT, borrower_id TEXT, event_type TEXT,
+    seq INTEGER PRIMARY KEY, key TEXT, label TEXT, event_id TEXT, customer_id TEXT, account_id TEXT, event_type TEXT,
     depends_on INTEGER, note TEXT);
 CREATE TABLE IF NOT EXISTS demo_setup (            -- every row the scenario staged, so it is listed
     seq INTEGER, table_name TEXT, row_key TEXT);
 """
 
-TABLES = ("borrower_profile", "borrower_state", "contact_log", "decision_log", "event_queue")
+TABLES = ("customer", "account", "customer_profile", "customer_state", "contact_log", "decision_log", "event_queue")
 
 
 class Database:
@@ -124,33 +137,10 @@ class Database:
             return
         if self.path != ":memory:":
             self.conn.execute("PRAGMA journal_mode=WAL")
+        old = self.conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='borrower_state'").fetchone()
+        if old:                                        # the layout before customers and accounts were separated
+            raise RuntimeError(f"{self.path} uses the old borrower-keyed layout; delete it (or reset) so it is rebuilt")
         self.conn.executescript(SCHEMA)
-        for col in ('message_json', 'to_masked'):      # databases created before messages existed
-            try:
-                self.conn.execute(f'ALTER TABLE contact_log ADD COLUMN {col} TEXT')
-            except sqlite3.OperationalError:
-                pass
-        try:                                           # databases created before the trace pad existed
-            self.conn.execute("ALTER TABLE run_step ADD COLUMN trace TEXT")
-        except sqlite3.OperationalError:
-            pass
-        self._upgrade_journey_run()
-
-    def _upgrade_journey_run(self) -> None:
-        """An earlier build made journey_run with a 'source' column and no fault columns. Rebuild it in the current
-        shape, keeping the real runs and dropping walkthrough rows (those are no longer saved)."""
-        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(journey_run)")}
-        if not cols or "fault" in cols:
-            return
-        old = [dict(r) for r in self.conn.execute(
-            "SELECT * FROM journey_run" + (" WHERE source='real'" if "source" in cols else ""))]
-        self.conn.execute("DROP TABLE journey_run")
-        self.conn.executescript(SCHEMA)
-        keep = ("event_id", "borrower_id", "event_type", "event_time", "outcome", "channel", "role", "owner_after",
-                "rule_ids", "summary", "started_wall", "finished_wall", "duration_ms", "attempts")
-        for r in old:
-            self.conn.execute(f"INSERT OR IGNORE INTO journey_run({','.join(keep)}) VALUES ({','.join('?' * len(keep))})",
-                              tuple(r.get(k) for k in keep))
 
     def execute(self, sql: str, params: tuple = ()) -> int:
         """Run a write; returns the number of rows changed."""

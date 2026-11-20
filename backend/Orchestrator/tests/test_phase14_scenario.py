@@ -23,7 +23,7 @@ EXPECT = {1: ("CONTACTED", "reminder", "whatsapp"), 2: ("CONTACTED", "reminder",
           10: ("DEFERRED", None, None), 11: ("CONTACTED", "reminder", "whatsapp"), 12: ("DEFERRED", None, None),
           13: ("CONTACTED", "reminder", "whatsapp"), 14: ("CONTACTED", "reminder", "email"),
           15: ("CONTACTED", "legal", "email")}
-GRAPH_ORDER = ["validate_event", "load_borrower", "guardrails", "route", "assign"]
+GRAPH_ORDER = ["validate_event", "load_customer", "guardrails", "route", "assign"]
 
 
 @pytest.fixture(scope="module")
@@ -41,8 +41,8 @@ def test_builder_makes_fifteen_distinct_real_borrowers_with_listed_setup(api):
     c, state = api
     items = c.get("/api/scenario").json()["items"]
     assert [i["seq"] for i in items] == list(range(1, 16))
-    assert len({i["borrower_id"] for i in items if i["seq"] != 12}) == 14           # 12 shares 11's borrower on purpose
-    assert items[11]["borrower_id"] == items[10]["borrower_id"]
+    assert len({i["customer_id"] for i in items if i["seq"] != 12}) == 14           # 12 shares 11's borrower on purpose
+    assert items[11]["customer_id"] == items[10]["customer_id"]
     assert all(i["status"] == "not_run" for i in items)
     staged = {r["table_name"] for r in state.reader.query("SELECT table_name FROM demo_setup")}
     assert staged == {"ds_history", "ds_ptp", "ds_payment"}
@@ -53,7 +53,7 @@ def test_builder_makes_fifteen_distinct_real_borrowers_with_listed_setup(api):
 def test_same_borrowers_on_every_build(api, tmp_path):
     _, state = api
     again = DemoState(tmp_path, REAL, mode="scenario")
-    assert [r["borrower_id"] for r in again.scenario_rows] == [r["borrower_id"] for r in state.scenario_rows]
+    assert [r["customer_id"] for r in again.scenario_rows] == [r["customer_id"] for r in state.scenario_rows]
 
 
 @real
@@ -114,8 +114,8 @@ def test_stored_steps_cover_the_graph_in_order_with_plain_sentences_and_owners(a
 @real
 def test_crash_after_send_sends_exactly_once(api):
     _, state = api
-    b = state.reader.one("SELECT borrower_id FROM demo_event WHERE seq=13")["borrower_id"]
-    assert state.reader.one("SELECT COUNT(*) n FROM contact_log WHERE account_id=? AND status='SENT'", (b,))["n"] == 1
+    b = state.reader.one("SELECT customer_id FROM demo_event WHERE seq=13")["customer_id"]
+    assert state.reader.one("SELECT COUNT(*) n FROM contact_log WHERE customer_id=? AND status='SENT'", (b,))["n"] == 1
     assert state.reader.one("SELECT COUNT(*) n FROM decision_log WHERE event_id='demo-13' AND text LIKE 'SKIP%'")["n"] == 1
 
 
@@ -236,13 +236,13 @@ def test_a_restart_keeps_the_run_and_only_reset_clears_it(tmp_path):
     for n in (1, 8, 13):
         a.runs.start(f"demo-{n:02d}", pace_ms=0, wait=True)
     steps_before = a.runs.steps("demo-13")
-    msg_before = a.runs.message("demo-01", a.scenario_rows[0]["borrower_id"])
+    msg_before = a.runs.message("demo-01", a.scenario_rows[0]["customer_id"])
     a.sup.close()
     b = DemoState(tmp_path, REAL, mode="scenario")                       # a new process, same folder
     c = TestClient(create_dashboard_app(b))
     items = c.get("/api/scenario").json()
     assert items["done"] == 3 and [i["seq"] for i in items["items"] if i["status"] == "done"] == [1, 8, 13]
-    assert b.runs.steps("demo-13") == steps_before and b.runs.message("demo-01", b.scenario_rows[0]["borrower_id"]) == msg_before
+    assert b.runs.steps("demo-13") == steps_before and b.runs.message("demo-01", b.scenario_rows[0]["customer_id"]) == msg_before
     ov = c.get("/api/overview").json()["counters"]
     assert ov["contacts_made"] == 2 and ov["faults_injected"] == 1 and ov["faults_recovered"] == 1
     b.runs.start("demo-02", pace_ms=0, wait=True)                         # the reopened supervisor still works

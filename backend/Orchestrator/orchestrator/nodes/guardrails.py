@@ -16,13 +16,13 @@ from orchestrator.state.models import BLOCKED, DEFERRED, GraphState
 
 def _guard_d12(ctx: Context, state: GraphState) -> dict:
     """Borrower-level D12 checks: suppression, payment hold, open promise, frequency caps, minimum gap."""
-    ev, b = state["event"], state["borrower"]
+    ev, b = state["event"], state["customer"]
     paused = b["status"] != ACTIVE
     if paused:                                    # the supervisor's own pause (after an escalation) comes first
         g = {"ok": False, "rule": "STATUS", "rule_ids": [], "reason": f"borrower is {b['status']}, automation paused"}
         status = "BLOCKED"
     else:
-        f = ctx.engine.facts(b["account_id"], datetime.fromisoformat(ev["time"]))
+        f = ctx.engine.facts(b["customer_id"], datetime.fromisoformat(ev["time"]), ev.get("account_id"))
         v = ctx.engine.guard(f, ev)
         g = {"ok": v["ok"], "rule": v["rule"], "rule_ids": v["rule_ids"], "reason": v["reason"]}
         if v.get("defer_until"):
@@ -43,8 +43,8 @@ def make_guardrails(ctx: Context):
     def guardrails(state: GraphState) -> dict:
         if ctx.engine is not None:
             return _guard_d12(ctx, state)
-        b, ev = state["borrower"], state["event"]
-        acc, date = b["account_id"], ev["time"][:10]
+        b, ev = state["customer"], state["event"]
+        acc, date = b["customer_id"], ev["time"][:10]
         used = ctx.contacts.daily_count(acc, date)
         cap = ctx.policy.per_borrower_daily_cap
         if b["status"] != ACTIVE:

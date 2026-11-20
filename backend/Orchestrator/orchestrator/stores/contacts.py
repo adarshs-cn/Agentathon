@@ -21,16 +21,16 @@ from orchestrator.stores.db import Database
 COUNTED = ("ATTEMPTING", "SENT")
 
 
-def idem_key(account_id: str, date: str) -> str:
-    return f"{account_id}|{date}"
+def idem_key(customer_id: str, date: str) -> str:
+    return f"{customer_id}|{date}"
 
 
 class ContactLog:
     def __init__(self, db: Database):
         self.db = db
 
-    def begin(self, key: str, account_id: str, date: str, channel: str, purpose: str,
-              event_id: str, role: str | None = None, at: str | None = None) -> str:
+    def begin(self, key: str, customer_id: str, date: str, channel: str, purpose: str,
+              event_id: str, role: str | None = None, at: str | None = None, account_id: str | None = None) -> str:
         """Record the intent to contact, before calling the agent. Idempotent.
 
         Returns NEW | RESUMED (retry or reroute of an unconfirmed attempt) |
@@ -41,9 +41,9 @@ class ContactLog:
             ts = now_iso()
             if row is None:
                 self.db.execute(
-                    "INSERT INTO contact_log(idem_key, account_id, date, channel, purpose, status, "
-                    "event_id, role, at, created_at, updated_at) VALUES (?,?,?,?,?,'ATTEMPTING',?,?,?,?,?)",
-                    (key, account_id, date, channel, purpose, event_id, role or purpose, at, ts, ts))
+                    "INSERT INTO contact_log(idem_key, customer_id, account_id, date, channel, purpose, status, "
+                    "event_id, role, at, created_at, updated_at) VALUES (?,?,?,?,?,?,'ATTEMPTING',?,?,?,?,?)",
+                    (key, customer_id, account_id, date, channel, purpose, event_id, role or purpose, at, ts, ts))
                 return "NEW"
             if row["status"] == "SENT":
                 return "ALREADY_SENT"
@@ -68,25 +68,25 @@ class ContactLog:
         r = self.db.one("SELECT * FROM contact_log WHERE idem_key=?", (key,))
         return dict(r) if r else None
 
-    def daily_count(self, account_id: str, date: str) -> int:
+    def daily_count(self, customer_id: str, date: str) -> int:
         return self.db.one(
-            "SELECT COUNT(*) c FROM contact_log WHERE account_id=? AND date=? "
-            "AND status IN ('ATTEMPTING','SENT')", (account_id, date))["c"]
+            "SELECT COUNT(*) c FROM contact_log WHERE customer_id=? AND date=? "
+            "AND status IN ('ATTEMPTING','SENT')", (customer_id, date))["c"]
 
-    def recent(self, account_id: str, since_date: str, until_date: str) -> list[dict]:
+    def recent(self, customer_id: str, since_date: str, until_date: str) -> list[dict]:
         """This supervisor's own contacts for a borrower between two dates (inclusive), unconfirmed ones included."""
         return [dict(r) for r in self.db.query(
-            "SELECT channel, role, purpose, status, at, date FROM contact_log WHERE account_id=? "
-            "AND date BETWEEN ? AND ? AND status IN ('ATTEMPTING','SENT')", (account_id, since_date, until_date))]
+            "SELECT channel, role, purpose, status, at, date FROM contact_log WHERE customer_id=? "
+            "AND date BETWEEN ? AND ? AND status IN ('ATTEMPTING','SENT')", (customer_id, since_date, until_date))]
 
     def agent_count(self, channel: str, date: str) -> int:
         return self.db.one(
             "SELECT COUNT(*) c FROM contact_log WHERE channel=? AND date=? "
             "AND status IN ('ATTEMPTING','SENT')", (channel, date))["c"]
 
-    def rows_for(self, account_id: str) -> list[dict]:
+    def rows_for(self, customer_id: str) -> list[dict]:
         return [dict(r) for r in self.db.query(
-            "SELECT * FROM contact_log WHERE account_id=? ORDER BY date, created_at", (account_id,))]
+            "SELECT * FROM contact_log WHERE customer_id=? ORDER BY date, created_at", (customer_id,))]
 
     def unresolved(self) -> list[dict]:
         return [dict(r) for r in self.db.query("SELECT * FROM contact_log WHERE status='ATTEMPTING'")]

@@ -26,7 +26,7 @@ CHANNEL_NODES = ("whatsapp", "email", "voice")
 
 NODE_WORDS = {
     "validate_event": ("Validate event", "Checks the incoming event is complete and known"),
-    "load_borrower": ("Load borrower", "Opens the borrower's file"),
+    "load_customer": ("Load customer", "Opens the account and the customer behind it"),
     "guardrails": ("Guardrails", "Borrower-level safety checks (D12)"),
     "route": ("Route", "Chooses the role and channel from the D12 matrix"),
     "assign": ("Assign", "Takes the ownership lock for the chosen agent"),
@@ -65,16 +65,18 @@ def _rule_texts(ids) -> list[str]:
 
 def llm_facts(node: str, db, st: dict) -> dict:
     """The only data the LLM receives: a small set of derived facts for THIS step, and the decision. No identifiers."""
-    ev, b, g, d = st.get("event") or {}, st.get("borrower") or {}, st.get("guard") or {}, st.get("decision") or {}
+    ev, b, g, d = st.get("event") or {}, st.get("customer") or {}, st.get("guard") or {}, st.get("decision") or {}
     out, f, rec = st.get("outcome") or {}, st.get("fault") or {}, st.get("recovery") or {}
     event = f"{reasons.EVENT_WORDS.get(ev.get('type'), ev.get('type'))} at {(ev.get('time') or '')[11:16]}"
     if node == "validate_event":
         rejected = out.get("status") == "REJECTED"
         return {"event": event,
-                "checks": "id, type, borrower and time are present; the type is one the supervisor handles; the borrower exists",
-                "decision": f"rejected: {out.get('reason')}" if rejected else "accepted; the borrower's previous run state is cleared"}
+                "checks": "id, type, account and time are present; the type is one the supervisor handles; the account exists",
+                "decision": f"rejected: {out.get('reason')}" if rejected else "accepted; the customer's previous run state is cleared"}
     if node == "route":
-        facts = {"event": event, "days_past_due": b.get("dpd"), "legal_flag": bool(b.get("legal_flag")),
+        a = st.get("account") or {}
+        facts = {"event": event, "this_loan_days_past_due": a.get("dpd", b.get("dpd")),
+                 "customer_worst_days_past_due": b.get("dpd"), "legal_case_on_any_loan": bool(b.get("legal_flag")),
                  "open_promises_to_pay": len(b.get("commitments") or []),
                  "reachable_on": [_ch(c) for c in b.get("channels") or []]}
         if d.get("agent"):
@@ -155,24 +157,27 @@ def two_sentences(text: str) -> tuple[str, bool]:
 
 # ---------------------------------------------------------------------------- rule traces
 def rule_lines(node: str, db, st: dict, ms: float | None = None) -> list[str]:
-    ev, b, g, d = st.get("event") or {}, st.get("borrower") or {}, st.get("guard") or {}, st.get("decision") or {}
+    ev, b, g, d = st.get("event") or {}, st.get("customer") or {}, st.get("guard") or {}, st.get("decision") or {}
     out, f, rec, res = st.get("outcome") or {}, st.get("fault"), st.get("recovery") or {}, st.get("result") or {}
     did, _ = reasons.sentence(node, db, st, ms)
     ids = out.get("rule_ids") or g.get("rule_ids") or d.get("rule_ids") or []
     L: list[str] = []
     if node == "validate_event":
         L += [f"Reading the incoming event: {reasons.EVENT_WORDS.get(ev.get('type'), ev.get('type'))} at {(ev.get('time') or '')[11:16]}.",
-              "Required fields present (id, type, borrower, time)... " + ("no" if out.get("status") == "REJECTED" else "yes"),
-              "Event type is one the supervisor handles... yes", "Borrower exists in the portfolio... yes"]
-    elif node == "load_borrower":
-        L += ["Opening the borrower's file...",
-              f"Days past due: {b.get('dpd', 0)}", f"Legal flag: {'set' if b.get('legal_flag') else 'not set'}",
+              "Required fields present (id, type, account, time)... " + ("no" if out.get("status") == "REJECTED" else "yes"),
+              "Event type is one the supervisor handles... yes", "The account exists and has a customer... yes"]
+    elif node == "load_customer":
+        a = st.get("account") or {}
+        L += [f"Opening account {a.get('account_id', '')} and the customer who holds it...",
+              f"This account: {a.get('dpd', 0)} days past due" + (f", {a.get('product')}" if a.get("product") else ""),
+              f"Across all the customer's accounts: worst {b.get('dpd', 0)} days past due",
+              f"Legal case on any of the customer's loans: {'yes' if b.get('legal_flag') else 'no'}",
               f"Reachable on: {', '.join(_ch(c) for c in b.get('channels') or []) or 'no channel'}",
               f"Open promises to pay: {len(b.get('commitments') or [])}",
               f"Current owner: {_role(b.get('owner')) if b.get('owner') else 'nobody'}",
               f"Automation status: {b.get('status')}"]
     elif node == "guardrails":
-        L += ["Running the borrower-level safety checks (D12)...",
+        L += ["Running the customer-level safety checks (D12), across all their accounts...",
               "Deceased, stop requests, complaints, disputes... ", "Payment in the last 48 hours, open promise to pay...",
               "Daily and weekly contact limits, minimum gap between contacts..."]
         L += (["All clear: nothing stops a contact."] if g.get("ok") else

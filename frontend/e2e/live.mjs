@@ -39,7 +39,7 @@ await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFac
 
 
 const waitFor = async (expr, ms = 20000) => { for (let t = 0; t < ms; t += 100) { if (await ev(expr)) return true; await sleep(100); } return false; };
-const tiles = () => ev("JSON.stringify([...document.querySelectorAll('[data-testid=stat-tile], .MuiPaper-root')].filter(e=>/Conflicting contacts|Faults recovered|Decision speed|Borrowers handled|Messages sent|Stopped or waiting/.test(e.innerText) && e.innerText.length<120).map(e=>e.innerText.replace(/\\s+/g,' ')))");
+const tiles = () => ev("JSON.stringify([...document.querySelectorAll('[data-testid=stat-tile], .MuiPaper-root')].filter(e=>/Conflicting contacts|Faults recovered|Decision speed|Customers handled|Messages sent|Stopped or waiting/.test(e.innerText) && e.innerText.length<120).map(e=>e.innerText.replace(/\\s+/g,' ')))");
 const api = async (p) => (await fetch(API + p)).json();
 
 await send('Page.navigate', { url: UI });
@@ -50,7 +50,7 @@ await shot('20-overview-live');
 
 // the real monitor appends and runs events by itself; the tiles follow
 const startDone = (await api('/api/overview')).counters.events_done;
-check(await waitFor(`/Borrowers handled/.test(document.body.innerText)`), 'the six tiles are there');
+check(await waitFor(`/Customers handled/.test(document.body.innerText)`), 'the six tiles are there');
 const grew = await (async () => { for (let i = 0; i < 100; i++) { if ((await api('/api/overview')).counters.events_done > startDone + 2) return true; await sleep(1000); } return false; })();
 check(grew, 'with nobody clicking anything, the monitor runs real events on its own');
 const real = (await api('/api/overview')).counters;

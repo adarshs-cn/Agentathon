@@ -1,5 +1,5 @@
 """PHASE 2 integration test: guardrails + routing, through the real stage-2 graph
-(validate_event -> load_borrower -> guardrails -> route, then the run ends)."""
+(validate_event -> load_customer -> guardrails -> route, then the run ends)."""
 import pytest
 
 from orchestrator.agents.stubs import default_agents
@@ -122,5 +122,5 @@ def test_routing_is_well_under_100ms_and_every_decision_is_logged(ctx):
         run(g, make_event(f"e{i}", account_id="B1", time=f"2026-11-{(i % 28) + 1:02d}T09:00:00"))
     assert ctx.percentile("route", 0.99) < 100, "routing p99 must be under 100 ms"
     assert max(ctx.metrics["route"]) < 100
-    rows = [r for r in ctx.decisions.for_account("B1") if r["node"] == "route"]
+    rows = [r for r in ctx.decisions.for_customer("B1") if r["node"] == "route"]
     assert len(rows) == 200 and all("rule" in r["data"] and r["data"]["reason"] for r in rows)

@@ -81,7 +81,7 @@ export default function WorkflowStudio() {
           <EventPicker items={list} value={run.eventId} onChange={(id) => { setError(null); setHover(null); setPinned(null); select(id); }} disabled={running} />
           {item && (
             <Typography sx={{ fontSize: 12, color: 'text.secondary' }} data-testid="event-line">
-              {item.event_label} at {item.time} · {item.borrower_masked} · {item.dpd} days past due
+              {item.event_label} at {item.time} · {item.borrower_masked} · account {item.account_id} · {item.dpd} days past due
             </Typography>
           )}
         </Stack>

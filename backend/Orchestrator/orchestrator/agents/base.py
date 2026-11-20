@@ -4,7 +4,7 @@ The other teams own the real agents. To plug one in, write a thin adapter that s
 `ChannelAgent` and implements two methods:
 
   execute(request)  perform the contact. Return a dict with at least
-                    {"account_id", "status": "DONE", "outcome": "CONTACTED"}.
+                    {"customer_id", "status": "DONE", "outcome": "CONTACTED"}.
                     May raise (crash) or hang (timeout) or return garbage; the supervisor
                     is built to survive all of that.
   lookup(key)       "did a contact with this idempotency key go out?"
@@ -33,18 +33,21 @@ class AgentTimeout(Exception):
 
 @dataclass(frozen=True)
 class ContactRequest:
-    account_id: str
+    customer_id: str
     purpose: str            # reminder | negotiation | servicing | legal
     template: str           # which pre-drafted template the agent should use
-    idempotency_key: str    # '<account>|<date>'; the agent/provider must dedupe on it
+    idempotency_key: str    # '<customer>|<event>' ('<customer>|<date>' in simple mode); the agent/provider must dedupe on it
     event_id: str
     time: str
     role: str = ""          # the role agent acting (dataset mode): reminder | negotiation | servicing | legal
     action: str = ""        # D12 action, e.g. ptp_capture (dataset mode)
     context: tuple = ()     # (key, value) pairs a message may use: masked name, EMI, dues... never raw personal data
+    account_id: str = ""    # the loan this contact is about (the event's account)
 
     def to_dict(self) -> dict:
         d = asdict(self)
+        if not d.get("account_id"):
+            d.pop("account_id", None)
         if not d.get("context"):
             d.pop("context", None)          # keep the logged request unchanged when no message text is built
         else:

@@ -38,7 +38,7 @@ def test_reminder_goes_out_on_whatsapp_and_state_is_committed(ctx):
 def test_node_order_is_the_documented_path(ctx):
     run(graph(ctx), make_event("e1", account_id="B1"))
     assert [r["node"] for r in ctx.decisions.for_event("e1")] == [
-        "validate_event", "load_borrower", "guardrails", "route", "assign",
+        "validate_event", "load_customer", "guardrails", "route", "assign",
         "whatsapp", "validate_output", "commit", "release", "close_event"]
 
 
@@ -103,10 +103,10 @@ def test_assign_is_safe_to_replay(ctx):
     g = graph(ctx)
     # guardrails would block (owner set), so call assign directly with a prepared state
     from orchestrator.nodes.execution import make_assign
-    state = {"event": make_event(), "borrower": ctx.borrowers.load("B1"),
+    state = {"event": make_event(), "customer": ctx.borrowers.load("B1"),
              "decision": {"agent": "whatsapp", "purpose": "reminder", "fallbacks": []}}
     upd = make_assign(ctx)(state)
-    assert "outcome" not in upd and upd["borrower"]["owner"] == "whatsapp" and upd["attempt"] == 0
+    assert "outcome" not in upd and upd["customer"]["owner"] == "whatsapp" and upd["attempt"] == 0
 
 
 # ------------------------------------------------------------------ faults are detected (not yet recovered)

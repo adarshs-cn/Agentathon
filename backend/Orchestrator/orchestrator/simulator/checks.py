@@ -25,8 +25,8 @@ def check_day(sup: Supervisor, injector=None) -> dict:
             provider[key] = provider.get(key, 0) + 1
     doubles = [k for k, c in provider.items() if c > 1]
     if ctx.engine is None:
-        rows = ctx.db.query("SELECT account_id, date, COUNT(*) c FROM contact_log WHERE status='SENT' "
-                            "GROUP BY account_id, date HAVING c > 1")
+        rows = ctx.db.query("SELECT customer_id, date, COUNT(*) c FROM contact_log WHERE status='SENT' "
+                            "GROUP BY customer_id, date HAVING c > 1")
         checks["zero_conflicting_contacts"] = {
             "ok": not rows and not doubles,
             "detail": f"{ctx.contacts.sent_total()} contacts sent; db double-contacts={len(rows)}, "
@@ -53,14 +53,14 @@ def check_day(sup: Supervisor, injector=None) -> dict:
 
     # 4. no ambiguous attempts against borrowers that are still on automation
     bad = [r for r in ctx.contacts.unresolved()
-           if ctx.borrowers.load(r["account_id"])["status"] == ACTIVE]
+           if ctx.borrowers.load(r["customer_id"])["status"] == ACTIVE]
     checks["no_unresolved_attempts"] = {"ok": not bad, "detail": f"{len(bad)} ambiguous on active borrowers"}
 
     # 5. all injected faults recovered, without losing borrower state
     if injector is not None:
         per_fault, ok = [], True
         for acc in sorted(injector.faulted_accounts()):
-            monitored = [r for r in ctx.decisions.for_account(acc) if r["node"] == "monitor"]
+            monitored = [r for r in ctx.decisions.for_customer(acc) if r["node"] == "monitor"]
             b = ctx.borrowers.load(acc)
             contacts = ctx.contacts.rows_for(acc)
             coherent = (b["owner"] is None
@@ -79,7 +79,7 @@ def check_day(sup: Supervisor, injector=None) -> dict:
                                                      else "no faults scripted for this run"), "faults": per_fault}
 
     # 6. complete trace for every account that got an event
-    accounts = [r["account_id"] for r in ctx.db.query("SELECT DISTINCT account_id FROM event_queue")]
+    accounts = [r["customer_id"] for r in ctx.db.query("SELECT DISTINCT customer_id FROM event_queue")]
     gaps = {a: g for a in accounts if (g := trace_gaps(ctx, a))}
     checks["complete_traces"] = {"ok": not gaps, "detail": f"{len(accounts)} accounts traced, {len(gaps)} with gaps",
                                  "gaps": dict(list(gaps.items())[:5])}

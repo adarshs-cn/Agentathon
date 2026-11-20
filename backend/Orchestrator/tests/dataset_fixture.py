@@ -40,8 +40,8 @@ class Mini:
         self.d1, self.d2, self.d10, self.d4, self.d6, self.d7 = [], [], [], [], [], []
         self._n = {"phone": 9000000000, "c": 0, "p": 0, "t": 0}
 
-    def account(self, account_id, borrower_id, dpd=5, legal=0, settlement=0, restructure=0):
-        self.d1.append({"account_id": account_id, "lender_id": "L01", "borrower_id": borrower_id, "dpd": dpd,
+    def account(self, account_id, customer_id, dpd=5, legal=0, settlement=0, restructure=0):
+        self.d1.append({"account_id": account_id, "lender_id": "L01", "borrower_id": customer_id, "dpd": dpd,
                         "bucket": bucket(dpd), "legal_flag": legal, "settlement_flag": settlement,
                         "restructure_flag": restructure, "emi": 1000, "total_dues": 5000})
 

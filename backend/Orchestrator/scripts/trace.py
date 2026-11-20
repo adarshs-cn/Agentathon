@@ -30,7 +30,7 @@ def main():
     ctx = Context.create(f"{a.data_dir}/orchestrator.db")
     if a.find:
         for r in find_events(ctx, a.find, a.limit):
-            print(f"{r['account_id'] or '-':<12} {r['event_id'] or ''}")
+            print(f"{r['customer_id'] or '-':<12} {r['event_id'] or ''}")
         return
     if not a.account:
         ap.error("give an account id, or --find <kind>")

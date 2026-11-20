@@ -17,7 +17,7 @@ def build_fault_script(day, borrowers: list[tuple], kinds: list[str] = HIDDEN_KI
     profiles = {r[0]: r for r in borrowers}
     first: dict[str, dict] = {}
     for e in day.events:
-        if e.get("account_id") in profiles:
+        if e.get("account_id") in profiles:          # simple mode: account = customer
             first.setdefault(e["account_id"], e)
     candidates = []
     for acc, e in first.items():

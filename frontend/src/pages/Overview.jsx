@@ -50,10 +50,10 @@ export default function Overview() {
             sub={`Target under ${latency.target_ms} ms`} accent={latency.samples && !latencyOk ? tokens.statusFault : undefined} onClick={() => setTile('latency')} />
         </Box>
         <Box>
-          <StatTile icon={GroupsIcon} label="Borrowers handled" value={counters.borrowers_handled} sub={data.monitor ? `${data.monitor.pool_handled} of ${data.monitor.pool_size} watched borrowers` : undefined} onClick={() => setTile('borrowers')} />
+          <StatTile icon={GroupsIcon} label="Customers handled" value={counters.borrowers_handled} sub={data.monitor ? `${data.monitor.pool_handled} of ${data.monitor.pool_size} watched customers` : undefined} onClick={() => setTile('borrowers')} />
         </Box>
         <Box>
-          <StatTile icon={CallMadeIcon} label="Messages sent" value={counters.contacts_made} sub={data.monitor ? 'Real borrowers only' : undefined} onClick={() => setTile('contacts')} />
+          <StatTile icon={CallMadeIcon} label="Messages sent" value={counters.contacts_made} sub={data.monitor ? 'Real customers only' : undefined} onClick={() => setTile('contacts')} />
         </Box>
         <Box>
           <StatTile icon={BlockIcon} label="Stopped or waiting" value={counters.blocked_or_deferred} sub="Click to see why" accent={tokens.statusDegraded} onClick={() => setTile('blocked')} />

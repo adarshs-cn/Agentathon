@@ -38,18 +38,18 @@ def test_transaction_rolls_back_on_error():
     db = Database(":memory:")
     with pytest.raises(RuntimeError):
         with db.transaction():
-            db.execute("insert into borrower_profile values ('X', 1, 0, '[]')")
+            db.execute("insert into customer_profile values ('X', 1, 0, '[]')")
             raise RuntimeError("boom")
-    assert db.one("select * from borrower_profile where account_id='X'") is None
+    assert db.one("select * from customer_profile where customer_id='X'") is None
 
 
 def test_file_database_persists_across_reopen(tmp_path):
     p = tmp_path / "t.db"
     db = Database(p)
-    db.execute("insert into borrower_profile values ('B1', 5, 0, '[]')")
+    db.execute("insert into customer_profile values ('B1', 5, 0, '[]')")
     db.close()
     db2 = Database(p)
-    assert db2.one("select dpd from borrower_profile where account_id='B1'")["dpd"] == 5
+    assert db2.one("select dpd from customer_profile where customer_id='B1'")["dpd"] == 5
 
 
 def test_event_queue_rejects_duplicate_event_id():

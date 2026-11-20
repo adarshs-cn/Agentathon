@@ -32,7 +32,7 @@ const STATUS_COLORS = {
 
 const QUICK_FIELDS = [
   { key: 'account_id', label: 'Account No' },
-  { key: 'borrower_id', label: 'Customer No' },
+  { key: 'customer_id', label: 'Customer No' },
   { key: 'borrower_name', label: 'Customer Name' },
   { key: 'contact_number', label: 'Contact Number' },
 ];
@@ -48,7 +48,7 @@ const columns = [
     renderCell: (p) => <MonoId sx={{ fontSize: 12 }}>{p.value}</MonoId>,
   },
   {
-    field: 'borrower_id',
+    field: 'customer_id',
     headerName: 'Customer No',
     width: 110,
     renderCell: (p) => <MonoId sx={{ fontSize: 12 }}>{p.value}</MonoId>,
@@ -158,7 +158,7 @@ const columns = [
 ];
 
 // The columns a supervisor cares about come first; the two the data does not contain start hidden.
-const ORDER = ['account_id', 'borrower_id', 'borrower_name', 'dpd', 'delinquency_bucket', 'account_status', 'flags',
+const ORDER = ['account_id', 'customer_id', 'borrower_name', 'dpd', 'delinquency_bucket', 'account_status', 'flags',
   'case_owner_user_id', 'last_disposition_date', 'product', 'loan_amount', 'total_overdue', 'principal_outstanding',
   'installment_amount', 'contact_no', 'city', 'total_outstanding', 'installment_overdue'];
 const orderedColumns = [...columns].sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field));
@@ -276,7 +276,7 @@ export default function Accounts() {
           )}
         </Stack>
         <Typography sx={{ fontSize: 11, color: tokens.statLabelGrey, mt: 1 }}>
-          Click a row to open that borrower&apos;s trace. Owner and last-contact columns update live while the simulated day plays.
+          Click a row to open that customer&apos;s trace. Owner and last-contact columns update live while the simulated day plays.
           Total O/S and Installment Overdue are not in the source data (D1) and are hidden.
         </Typography>
       </Paper>

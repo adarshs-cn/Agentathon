@@ -21,13 +21,13 @@ from orchestrator.agents.runner import call_with_timeout
 from orchestrator.context import Context
 from orchestrator.state.models import BLOCKED, CRASH, MALFORMED, NO_PROGRESS, TIMEOUT, GraphState
 
-REQUIRED_OUTPUT = {"account_id", "status", "outcome"}
+REQUIRED_OUTPUT = {"customer_id", "status", "outcome"}
 
 
 def make_assign(ctx: Context):
     def assign(state: GraphState) -> dict:
-        b, dec = state["borrower"], state["decision"]
-        acc, agent = b["account_id"], dec["agent"]
+        b, dec = state["customer"], state["decision"]
+        acc, agent = b["customer_id"], dec["agent"]
         if not ctx.borrowers.try_take_owner(acc, agent):
             holder = ctx.borrowers.load(acc)["owner"]
             if holder != agent:
@@ -41,23 +41,24 @@ def make_assign(ctx: Context):
         h = dec.get("handoff")
         if h:                                                    # A12: every ownership change is logged with its reason
             ctx.log(state, "assign", f"HANDOFF {h['from']} -> {h['to']} [{', '.join(h['rule_ids'])}]: {h['why']}", h)
-        return {"borrower": {**b, "owner": agent}, "attempt": 0}
+        return {"customer": {**b, "owner": agent}, "attempt": 0}
     return assign
 
 
 def make_agent_node(ctx: Context, name: str):
     def agent_node(state: GraphState) -> dict:
-        ev, b, dec = state["event"], state["borrower"], state["decision"]
-        acc, date = b["account_id"], ev["time"][:10]
+        ev, b, dec = state["event"], state["customer"], state["decision"]
+        acc, date = b["customer_id"], ev["time"][:10]
         key = ctx.idem_key(acc, ev)
         attempt = state.get("attempt", 0) + 1
         agent = ctx.registry.get(name)
 
         what = dec.get("action") or dec["purpose"]
-        began = ctx.contacts.begin(key, acc, date, name, what, ev["id"], role=dec.get("role") or dec["purpose"], at=ev["time"])
+        began = ctx.contacts.begin(key, acc, date, name, what, ev["id"], role=dec.get("role") or dec["purpose"], at=ev["time"],
+                                   account_id=ev.get("account_id"))
         if began == "ALREADY_SENT":
             row = ctx.contacts.get(key)
-            res = {"account_id": acc, "status": "DONE", "outcome": "CONTACTED",
+            res = {"customer_id": acc, "status": "DONE", "outcome": "CONTACTED",
                    "channel": row["channel"], "provider_ref": row["provider_ref"], "via": "already_sent"}
             ctx.log(state, name, f"attempt {attempt}: contact for today is already SENT, agent not called")
             return {"attempt": attempt, "result": res, "fault": None}
@@ -65,9 +66,10 @@ def make_agent_node(ctx: Context, name: str):
         mctx = ()
         if ctx.engine is not None:                    # dataset mode: the text needs the borrower's real numbers
             from orchestrator.agents.messages import message_context
-            mctx = tuple(message_context(ctx.db, acc, ev, dec.get("action") or what).items())
+            mctx = tuple(message_context(ctx.db, acc, ev, dec.get("action") or what).items())  # numbers of ev's account
         req = ContactRequest(acc, what, agent.template_for(what), key, ev["id"], ev["time"],
-                             role=dec.get("role") or "", action=dec.get("action") or "", context=mctx)
+                             role=dec.get("role") or "", action=dec.get("action") or "", context=mctx,
+                             account_id=ev.get("account_id") or "")
         t0 = time.perf_counter()
 
         def evidence(**extra) -> dict:       # what we sent the agent, and what came back
@@ -96,13 +98,13 @@ def make_validate_output(ctx: Context):
         if state.get("fault"):                       # the agent node already reported an exception
             ctx.log(state, "validate_output", f"fault already reported: {state['fault']['type']}")
             return {}
-        acc = state["borrower"]["account_id"]
+        acc = state["customer"]["customer_id"]
         res = state.get("result")
         keys = set(res) if isinstance(res, dict) else set()
         if isinstance(res, dict) and res.get("status") == "IN_PROGRESS":
             f = {"type": NO_PROGRESS, "detail": f"still IN_PROGRESS after attempt {state['attempt']}"}
         elif (not REQUIRED_OUTPUT <= keys or res.get("status") != "DONE"
-              or res.get("account_id") != acc):
+              or res.get("customer_id") != acc):
             f = {"type": MALFORMED, "detail": f"got keys {sorted(keys)}, expected {sorted(REQUIRED_OUTPUT)} "
                                               f"with status DONE for {acc}"}
         else:

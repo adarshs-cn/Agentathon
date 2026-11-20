@@ -77,7 +77,7 @@ def test_simultaneous_events_for_one_borrower_contact_once():
 
 
 # ------------------------------------------------------------------ the supervisor dies and restarts
-HAPPY_PATH = ["validate_event", "load_borrower", "guardrails", "route", "assign", "whatsapp",
+HAPPY_PATH = ["validate_event", "load_customer", "guardrails", "route", "assign", "whatsapp",
               "validate_output", "commit", "release", "close_event"]
 
 
@@ -243,7 +243,7 @@ def test_checks_pass_on_a_clean_run():
 
 def test_checks_catch_a_double_contact():
     sup = finished_day()
-    sup.ctx.db.execute("INSERT INTO contact_log(idem_key, account_id, date, channel, purpose, status) "
+    sup.ctx.db.execute("INSERT INTO contact_log(idem_key, customer_id, date, channel, purpose, status) "
                        "VALUES ('B2|2026-11-20|dup','B2','2026-11-20','email','reminder','SENT')")
     r = check_day(sup, sup.injector)
     assert not r["passed"] and not r["checks"]["zero_conflicting_contacts"]["ok"]
@@ -266,7 +266,7 @@ def test_checks_catch_a_dangling_lock_and_an_unfinished_event():
 def test_checks_catch_a_trace_gap_and_an_unrecovered_fault():
     sup = finished_day()
     sup.ctx.db.execute("DELETE FROM decision_log WHERE event_id='e2' AND node='close_event'")
-    sup.ctx.db.execute("DELETE FROM decision_log WHERE account_id='B1' AND node='monitor'")
+    sup.ctx.db.execute("DELETE FROM decision_log WHERE customer_id='B1' AND node='monitor'")
     r = check_day(sup, sup.injector)
     assert not r["checks"]["complete_traces"]["ok"] and not r["checks"]["all_faults_recovered"]["ok"]
 
@@ -287,8 +287,8 @@ def test_a_second_read_only_connection_sees_the_writers_data_and_cannot_write(tm
     import sqlite3
     from orchestrator.stores.db import Database
     w = Database(tmp_path / "x.db")
-    w.execute("INSERT INTO borrower_profile VALUES ('B1', 5, 0, '[]')")
+    w.execute("INSERT INTO customer_profile VALUES ('B1', 5, 0, '[]')")
     r = Database(tmp_path / "x.db", read_only=True)
-    assert r.one("SELECT dpd FROM borrower_profile WHERE account_id='B1'")["dpd"] == 5
+    assert r.one("SELECT dpd FROM customer_profile WHERE customer_id='B1'")["dpd"] == 5
     with pytest.raises(sqlite3.OperationalError):
-        r.execute("INSERT INTO borrower_profile VALUES ('B2', 1, 0, '[]')")
+        r.execute("INSERT INTO customer_profile VALUES ('B2', 1, 0, '[]')")

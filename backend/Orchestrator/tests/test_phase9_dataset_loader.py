@@ -75,7 +75,7 @@ def test_no_personal_data_is_stored_anywhere(tmp_path):
     blob = b"".join(p.read_bytes() for p in tmp_path.glob("t.db*"))
     for secret in (b"Person T1", b"t1@example.in", b"9111111111", b"9000000001", b"Someone Private", b"xx***"):
         assert secret not in blob, secret
-    p = {r["borrower_id"]: dict(r) for r in ctx.db.query("SELECT * FROM ds_person")}
+    p = {r["customer_id"]: dict(r) for r in ctx.db.query("SELECT * FROM customer")}
     assert p["T1"]["has_phone"] == 1 and p["T1"]["has_email"] == 1 and p["T1"]["shared_phone"] == 0
     assert p["T2"]["shared_phone"] == 1 and p["T3"]["shared_phone"] == 1          # the pair share a number
     assert p["T4"]["has_phone"] == 0 and p["T4"]["has_email"] == 0
@@ -102,7 +102,7 @@ def test_history_is_attached_to_the_borrower_through_the_account_and_keeps_the_d
     m.contact("T1", "2026-10-31 11:00:00", "reminder_agent", "sms", account="GHOST")          # account not in D1
     ctx, rep = loaded(m, tmp_path)
     rows = [dict(r) for r in ctx.db.query("SELECT * FROM ds_history")]
-    assert len(rows) == 1 and rows[0]["borrower_id"] == "T1" and rows[0]["account_id"] == "T1b"
+    assert len(rows) == 1 and rows[0]["customer_id"] == "T1" and rows[0]["account_id"] == "T1b"
     assert rows[0]["disposition"] == "no_answer" and rep["history_unmatched"] == 1
     blob = b"".join(p.read_bytes() for p in tmp_path.glob("t.db*"))
     assert b"9876543210" not in blob                                    # number_or_handle_used is never stored
@@ -115,7 +115,7 @@ def test_reloading_replaces_rather_than_duplicates(tmp_path):
     ctx, first = loaded(m, tmp_path)
     again = load_dataset(ctx.db, ctx.borrowers, tmp_path / "ds")
     assert {k: v for k, v in again.items()} == {k: v for k, v in first.items()}
-    assert ctx.db.one("SELECT COUNT(*) c FROM ds_account")["c"] == 1
+    assert ctx.db.one("SELECT COUNT(*) c FROM account")["c"] == 1
 
 
 def test_a_payment_for_an_unknown_account_is_kept_but_unmatched(tmp_path):
@@ -125,7 +125,7 @@ def test_a_payment_for_an_unknown_account_is_kept_but_unmatched(tmp_path):
     m.payment("GHOST", "2026-10-30 11:00:00")
     ctx, rep = loaded(m, tmp_path)
     assert rep["payments"] == 2 and rep["payments_unmatched"] == 1
-    assert ctx.db.one("SELECT borrower_id FROM ds_payment WHERE account_id='GHOST'")["borrower_id"] is None
+    assert ctx.db.one("SELECT customer_id FROM ds_payment WHERE account_id='GHOST'")["customer_id"] is None
 
 
 def test_display_fields_are_masked_and_the_grid_columns_are_kept(tmp_path):
@@ -134,9 +134,9 @@ def test_display_fields_are_masked_and_the_grid_columns_are_kept(tmp_path):
     assert mask_phone("6197814842") == "XXXXXX4842" and mask_phone("12") == "" and mask_phone("+91 98765-43210") == "XXXXXX3210"
     m = Mini(); m.borrower("T1", dpd=45)
     ctx, _ = loaded(m, tmp_path)
-    p = dict(ctx.db.one("SELECT * FROM ds_person WHERE borrower_id='T1'"))
+    p = dict(ctx.db.one("SELECT * FROM customer WHERE customer_id='T1'"))
     assert p["name_masked"] == "P*** T***" and p["phone_masked"] == "XXXXXX0001"      # 'Person T1', 9000000001
-    a = dict(ctx.db.one("SELECT * FROM ds_account WHERE account_id='T1a'"))
+    a = dict(ctx.db.one("SELECT * FROM account WHERE account_id='T1a'"))
     assert {"product", "city", "branch", "loan_amount", "principal_outstanding"} <= set(a)
 
 
@@ -173,7 +173,7 @@ def test_real_dataset_has_the_documented_shape(real_ctx):
     assert rep["multi_account_borrowers"] == 2500 and rep["rules"] == 93 and rep["capacity"] == 21
     assert ctx.borrowers.count() == 17000
     # D1's own bucket column agrees with the SMA mapping for every account
-    bad = [r["account_id"] for r in ctx.db.query("SELECT account_id, dpd, bucket FROM ds_account")
+    bad = [r["account_id"] for r in ctx.db.query("SELECT account_id, dpd, bucket FROM account")
            if bucket_of(r["dpd"]) != r["bucket"]]
     assert bad == []
 
@@ -182,24 +182,24 @@ def test_real_dataset_has_the_documented_shape(real_ctx):
 def test_real_planted_cases_d1_d2(real_ctx):
     ctx, rep = real_ctx
     d1, d2 = planted("d1_planted_cases.json"), planted("d2_planted_cases.json")
-    assert ctx.db.one("SELECT SUM(legal_flag) s FROM ds_account")["s"] == d1["legal_flag_account_count"] == 896
+    assert ctx.db.one("SELECT SUM(legal_flag) s FROM account")["s"] == d1["legal_flag_account_count"] == 896
     for b, accs in d1["differing_flag_borrowers"].items():      # mixed legal / non-legal accounts per borrower
-        flags = {r["legal_flag"] for r in ctx.db.query("SELECT legal_flag FROM ds_account WHERE borrower_id=?", (b,))}
+        flags = {r["legal_flag"] for r in ctx.db.query("SELECT legal_flag FROM account WHERE customer_id=?", (b,))}
         assert flags == {0, 1}, b
         assert ctx.borrowers.load(b)["legal_flag"] is True      # ...and the borrower is treated as legal
-    deceased = {r["borrower_id"] for r in ctx.db.query("SELECT borrower_id FROM ds_person WHERE deceased=1")}
+    deceased = {r["customer_id"] for r in ctx.db.query("SELECT customer_id FROM customer WHERE deceased=1")}
     assert deceased == set(d2["deceased_borrowers"])
-    shared = {r["borrower_id"] for r in ctx.db.query("SELECT borrower_id FROM ds_person WHERE shared_phone=1")}
+    shared = {r["customer_id"] for r in ctx.db.query("SELECT customer_id FROM customer WHERE shared_phone=1")}
     assert {b for pair in d2["shared_phone_1_pairs"] for b in pair} <= shared
-    nophone = {r["borrower_id"] for r in ctx.db.query("SELECT borrower_id FROM ds_person WHERE has_phone=0")}
+    nophone = {r["customer_id"] for r in ctx.db.query("SELECT customer_id FROM customer WHERE has_phone=0")}
     assert set(d2["no_phone_borrowers"]) <= nophone
 
 
 @real
 def test_real_planted_cases_d4_today_and_d6_d7(real_ctx):
     ctx, rep = real_ctx
-    today = {r["borrower_id"]: r["n"] for r in ctx.db.query(
-        "SELECT borrower_id, COUNT(*) n FROM ds_history WHERE substr(at,1,10)='2026-10-31' GROUP BY borrower_id")}
+    today = {r["customer_id"]: r["n"] for r in ctx.db.query(
+        "SELECT customer_id, COUNT(*) n FROM ds_history WHERE substr(at,1,10)='2026-10-31' GROUP BY customer_id")}
     d4 = planted("d4_planted_cases.json")["today_contacts"]
     # The planted lists are LOWER bounds: a handful of these borrowers also got an unrelated organic
     # contact today, so they sit one higher. Almost all match exactly.

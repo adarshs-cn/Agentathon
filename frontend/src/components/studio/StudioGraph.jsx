@@ -21,7 +21,7 @@ import { edgeState, nodeState } from './studioLogic';
 import { C } from './studioTheme';
 
 const ICONS = {
-  __start__: PlayCircleOutlineIcon, validate_event: FactCheckOutlinedIcon, load_borrower: PersonSearchOutlinedIcon,
+  __start__: PlayCircleOutlineIcon, validate_event: FactCheckOutlinedIcon, load_customer: PersonSearchOutlinedIcon,
   guardrails: ShieldOutlinedIcon, route: AltRouteIcon, assign: LockOutlinedIcon, whatsapp: WhatsAppIcon,
   email: EmailOutlinedIcon, voice: PhoneInTalkOutlinedIcon, validate_output: RuleIcon, monitor: MonitorHeartOutlinedIcon,
   recover: AutorenewIcon, commit: SaveOutlinedIcon, release: LockOpenOutlinedIcon, close_event: TaskAltIcon, __end__: FlagOutlinedIcon,

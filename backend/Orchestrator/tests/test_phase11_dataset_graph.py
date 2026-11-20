@@ -16,8 +16,9 @@ def system(m: Mini, tmp_path, script=None, **kw):
     return sup
 
 
-def ev(id, b="T1", type="OVERDUE", time="2026-10-31T10:00:00"):
-    return {"id": id, "type": type, "account_id": b, "time": time}
+def ev(id, b="T1", type="OVERDUE", time="2026-10-31T10:00:00", account=None):
+    """An event on the customer's account (the fixture names a customer's first account '<customer>a')."""
+    return {"id": id, "type": type, "account_id": account or f"{b}a", "time": time}
 
 
 def run(sup, *events):
@@ -70,7 +71,7 @@ def test_a_blocked_event_never_reaches_an_agent_and_cites_its_rule(tmp_path):
     sup = system(m, tmp_path)
     run(sup, ev("e1"))
     assert outcome(sup, "e1") == "BLOCKED" and messages(sup) == []
-    assert [r["node"] for r in sup.ctx.decisions.for_event("e1")] == ["validate_event", "load_borrower", "guardrails", "close_event"]
+    assert [r["node"] for r in sup.ctx.decisions.for_event("e1")] == ["validate_event", "load_customer", "guardrails", "close_event"]
     assert step(sup, "e1", "close_event")["data"]["rule_ids"] == ["R058"]
 
 
@@ -122,7 +123,7 @@ def test_deferral_cannot_loop_forever(tmp_path):
     sup.ctx.engine.hard_window = (9 * 60, 9 * 60)                                        # empty window: always deferred
     run(sup, ev("e1", time="2026-10-31T09:00:00"))
     assert outcome(sup, "e1") == "DEFERRED" and outcome(sup, "e1~d1") == "DEFERRED" and sup.ctx.bus.get("e1~d2") is None
-    assert any("gave up re-scheduling" in r["text"] for r in sup.ctx.decisions.for_account("T1"))
+    assert any("gave up re-scheduling" in r["text"] for r in sup.ctx.decisions.for_customer("T1"))
 
 
 # ------------------------------------------------------------------ ownership and handoff
@@ -173,7 +174,7 @@ def test_a_looping_channel_is_rerouted_inside_the_same_role(tmp_path):
 
 
 # ------------------------------------------------------------------ the supervisor dies
-@pytest.mark.parametrize("node", ["validate_event", "load_borrower", "guardrails", "route", "assign", "whatsapp",
+@pytest.mark.parametrize("node", ["validate_event", "load_customer", "guardrails", "route", "assign", "whatsapp",
                                   "validate_output", "commit", "release", "close_event"])
 def test_process_death_at_every_node_in_dataset_mode_still_means_one_contact(tmp_path, node):
     from orchestrator.agents.stubs import default_agents

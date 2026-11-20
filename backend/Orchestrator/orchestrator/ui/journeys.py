@@ -6,9 +6,9 @@ from datetime import datetime
 
 from orchestrator.ui import reasons
 
-SORT = {"finished": "finished_wall", "event_time": "event_time", "borrower_id": "r.borrower_id", "outcome": "outcome",
+SORT = {"finished": "finished_wall", "event_time": "event_time", "customer_id": "r.customer_id", "outcome": "outcome",
         "duration_ms": "duration_ms", "event_type": "event_type"}
-BASE = "FROM journey_run r LEFT JOIN ds_person p ON p.borrower_id = r.borrower_id"
+BASE = "FROM journey_run r LEFT JOIN customer p ON p.customer_id = r.customer_id"
 
 
 FIX_SHORT = {"RESUME": "retried", "RESTART_SKIP_CURRENT": "not sent again", "REROUTE_CHANNEL": "other channel",
@@ -36,8 +36,8 @@ def journey_runs(db, params: dict) -> dict:
     cond, args = [], []
     if params.get("outcome"):
         cond.append("outcome=?"); args.append(params["outcome"])
-    if params.get("borrower_id"):
-        cond.append("r.borrower_id LIKE ?"); args.append(f"{params['borrower_id'].strip()}%")
+    if params.get("customer_id"):
+        cond.append("r.customer_id LIKE ?"); args.append(f"{params['customer_id'].strip()}%")
     if str(params.get("faults_only", "")).lower() in ("1", "true", "yes"):
         cond.append("r.fault IS NOT NULL")
     where = (" WHERE " + " AND ".join(cond)) if cond else ""

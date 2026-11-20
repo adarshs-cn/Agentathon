@@ -450,7 +450,7 @@ def real_engine():
 @real
 def test_real_every_deceased_borrower_is_blocked(real_engine):
     ctx, eng = real_engine
-    ids = [r["borrower_id"] for r in ctx.db.query("SELECT borrower_id FROM ds_person WHERE deceased=1")]
+    ids = [r["customer_id"] for r in ctx.db.query("SELECT customer_id FROM customer WHERE deceased=1")]
     assert len(ids) == 85
     for b in ids:
         g = eng.evaluate(b, ev(b=b))["guard"]
@@ -460,7 +460,7 @@ def test_real_every_deceased_borrower_is_blocked(real_engine):
 @real
 def test_real_a_sweep_of_3000_borrowers_obeys_the_invariants_and_is_fast(real_engine):
     ctx, eng = real_engine
-    ids = [r["borrower_id"] for r in ctx.db.query("SELECT account_id AS borrower_id FROM borrower_profile ORDER BY account_id LIMIT 3000")]
+    ids = [r["customer_id"] for r in ctx.db.query("SELECT customer_id FROM customer_profile ORDER BY customer_id LIMIT 3000")]
     t = time.perf_counter(); lat, counts = [], {}
     for b in ids:
         t0 = time.perf_counter()
@@ -471,7 +471,7 @@ def test_real_a_sweep_of_3000_borrowers_obeys_the_invariants_and_is_fast(real_en
         if r["final"] in ("BLOCKED", "SUPPRESSED", "DEFERRED"):
             assert (refusal or r["plan"])["rule_ids"], (b, r["final"])          # R093: every refusal cites a rule
         if r["final"] == "OK":
-            p, accounts = r["plan"], ctx.db.query("SELECT legal_flag FROM ds_account WHERE borrower_id=?", (b,))
+            p, accounts = r["plan"], ctx.db.query("SELECT legal_flag FROM account WHERE customer_id=?", (b,))
             assert set(p["channel_agents"]) <= {"whatsapp", "email", "voice"}
             if any(a["legal_flag"] for a in accounts):
                 assert p["role"] == "legal", b                                    # R040 across all their accounts
@@ -484,23 +484,23 @@ def test_real_a_sweep_of_3000_borrowers_obeys_the_invariants_and_is_fast(real_en
 @real
 def test_real_borrowers_already_at_their_cap_today_are_blocked(real_engine):
     ctx, eng = real_engine
-    rows = ctx.db.query("SELECT borrower_id, COUNT(*) n FROM ds_history WHERE substr(at,1,10)='2026-10-31' "
-                        "GROUP BY borrower_id HAVING n >= 3")
+    rows = ctx.db.query("SELECT customer_id, COUNT(*) n FROM ds_history WHERE substr(at,1,10)='2026-10-31' "
+                        "GROUP BY customer_id HAVING n >= 3")
     assert len(rows) >= 100
     for r in rows[:150]:
-        g = eng.evaluate(r["borrower_id"], ev(b=r["borrower_id"]))["guard"]
-        assert g["status"] in ("BLOCKED", "DEFERRED") and g["rule_ids"], r["borrower_id"]
+        g = eng.evaluate(r["customer_id"], ev(b=r["customer_id"]))["guard"]
+        assert g["status"] in ("BLOCKED", "DEFERRED") and g["rule_ids"], r["customer_id"]
 
 
 @real
 def test_real_nobody_is_ever_routed_to_a_channel_without_consent(real_engine):
     ctx, eng = real_engine
-    ids = [r["borrower_id"] for r in ctx.db.query("SELECT borrower_id FROM ds_consent LIMIT 2500")]
+    ids = [r["customer_id"] for r in ctx.db.query("SELECT customer_id FROM ds_consent LIMIT 2500")]
     for b in ids:
         r = eng.evaluate(b, ev(b=b, type="OVERDUE"))
         if r["final"] != "OK":
             continue
-        c = dict(ctx.db.one("SELECT * FROM ds_consent WHERE borrower_id=?", (b,)))
+        c = dict(ctx.db.one("SELECT * FROM ds_consent WHERE customer_id=?", (b,)))
         col = {"whatsapp": "consent_whatsapp", "email": "consent_email", "voice": "consent_call"}
         for agent in r["plan"]["channel_agents"]:
             st = c[col[agent]]

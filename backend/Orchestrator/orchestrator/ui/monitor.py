@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 POOL_SIZE = 15
 SCHEMA = """CREATE TABLE IF NOT EXISTS monitor_pool (
-    borrower_id TEXT PRIMARY KEY, account_id TEXT, dpd INTEGER, next_due REAL, events INTEGER NOT NULL DEFAULT 0);
+    customer_id TEXT PRIMARY KEY, account_id TEXT, dpd INTEGER, next_due REAL, events INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS monitor_meta (k TEXT PRIMARY KEY, v TEXT);"""
 
 
@@ -37,7 +37,8 @@ def hhmm(minutes: int) -> str:
 
 
 def setup_pool(sup, as_of: str, seed: int = 5, size: int = POOL_SIZE, stagger_s: int = 20) -> list[dict]:
-    """Pick the pool once: borrowers with one account, reachable and not suppressed (a mix of due-soon and overdue)."""
+    """Pick the pool once: 15 customers (reachable, not suppressed; a mix of due-soon and overdue) and the account
+    each is watched on: events are published for that ACCOUNT."""
     from datetime import date
     from orchestrator.ui.scenario import CLEAN
     db = sup.ctx.db
@@ -47,17 +48,17 @@ def setup_pool(sup, as_of: str, seed: int = 5, size: int = POOL_SIZE, stagger_s:
         return [dict(r) for r in have]
     since = (date.fromisoformat(as_of) - timedelta(days=8)).isoformat()
     paid_since = (date.fromisoformat(as_of) - timedelta(days=3)).isoformat()
-    base = ("SELECT a.borrower_id, a.account_id, a.dpd FROM ds_account a JOIN ds_consent c ON c.borrower_id=a.borrower_id "
-            f"JOIN ds_person p ON p.borrower_id=a.borrower_id WHERE {CLEAN} AND a.legal_flag=0 AND ")
+    base = ("SELECT a.customer_id, a.account_id, a.dpd FROM account a JOIN ds_consent c ON c.customer_id=a.customer_id "
+            f"JOIN customer p ON p.customer_id=a.customer_id WHERE {CLEAN} AND a.legal_flag=0 AND ")
     rng = random.Random(seed)
-    due = [dict(r) for r in db.query(base + "a.dpd=0 ORDER BY a.borrower_id", (since, paid_since))]
-    late = [dict(r) for r in db.query(base + "a.dpd BETWEEN 1 AND 60 ORDER BY a.borrower_id", (since, paid_since))]
+    due = [dict(r) for r in db.query(base + "a.dpd=0 ORDER BY a.customer_id", (since, paid_since))]
+    late = [dict(r) for r in db.query(base + "a.dpd BETWEEN 1 AND 60 ORDER BY a.customer_id", (since, paid_since))]
     pick = rng.sample(due, min(5, len(due))) + rng.sample(late, min(size - 5, len(late)))
     rng.shuffle(pick)
     now = time.time()
     for i, r in enumerate(pick):
-        db.execute("INSERT INTO monitor_pool(borrower_id, account_id, dpd, next_due, events) VALUES (?,?,?,?,0)",
-                   (r["borrower_id"], r["account_id"], r["dpd"], now + i * stagger_s))
+        db.execute("INSERT INTO monitor_pool(customer_id, account_id, dpd, next_due, events) VALUES (?,?,?,?,0)",
+                   (r["customer_id"], r["account_id"], r["dpd"], now + i * stagger_s))
     return [dict(r) for r in db.query("SELECT * FROM monitor_pool ORDER BY rowid")]
 
 
@@ -116,15 +117,15 @@ class LiveMonitor:
         db, sup, ts = self.state.sup.ctx.db, self.state.sup, now.timestamp()
         n = 0
         for r in db.query("SELECT * FROM monitor_pool WHERE next_due <= ? ORDER BY next_due", (ts,)):
-            busy = db.one("SELECT 1 FROM event_queue WHERE account_id=? AND status IN ('PENDING','IN_PROGRESS')",
-                          (r["borrower_id"],))
+            busy = db.one("SELECT 1 FROM event_queue WHERE customer_id=? AND status IN ('PENDING','IN_PROGRESS')",
+                          (r["customer_id"],))
             if busy:
                 continue
             etype = "DUE_SOON" if r["dpd"] == 0 else "OVERDUE"
-            eid = f"live-{int(ts * 1000)}-{r['borrower_id']}"
-            if sup.publish({"id": eid, "type": etype, "account_id": r["borrower_id"], "time": now.isoformat(timespec="seconds")}):
+            eid = f"live-{int(ts * 1000)}-{r['customer_id']}"
+            if sup.publish({"id": eid, "type": etype, "account_id": r["account_id"], "time": now.isoformat(timespec="seconds")}):
                 n += 1
-            db.execute("UPDATE monitor_pool SET next_due=?, events=events+1 WHERE borrower_id=?", (ts + self.every_s, r["borrower_id"]))
+            db.execute("UPDATE monitor_pool SET next_due=?, events=events+1 WHERE customer_id=?", (ts + self.every_s, r["customer_id"]))
         return n
 
     # ------------------------------------------------------------ what the UI shows
@@ -132,8 +133,8 @@ class LiveMonitor:
         now = now or datetime.now()
         db = self.state.reader
         pool = db.one("SELECT COUNT(*) n, MIN(next_due) nxt FROM monitor_pool")
-        handled = db.one("SELECT COUNT(DISTINCT account_id) n FROM event_queue WHERE status='DONE' AND outcome != 'REJECTED' "
-                         "AND account_id IN (SELECT borrower_id FROM monitor_pool)")["n"]
+        handled = db.one("SELECT COUNT(DISTINCT customer_id) n FROM event_queue WHERE status='DONE' AND outcome != 'REJECTED' "
+                         "AND customer_id IN (SELECT customer_id FROM monitor_pool)")["n"]
         waiting = db.one("SELECT COUNT(*) n FROM event_queue WHERE status='PENDING'")["n"]
         inside = self.in_window(now)
         state = "paused" if self.paused else ("monitoring" if inside else "outside_window")

@@ -61,8 +61,8 @@ def format_step(row: dict, verbose: bool = False) -> list[str]:
 
 
 def render_trace(trace: dict, verbose: bool = False) -> str:
-    b = trace["borrower"] or {}
-    out = [f"ACCOUNT {trace['account_id']}   trace complete: {trace['complete']}",
+    b = trace["customer"] or {}
+    out = [f"ACCOUNT {trace['customer_id']}   trace complete: {trace['complete']}",
            f"  now: status={b.get('status')} owner={b.get('owner')} last_contact={b.get('last_contact')}",
            f"  facts: dpd={b.get('dpd')} legal_flag={b.get('legal_flag')} channels={b.get('channels')} "
            f"open_promises={len(b.get('commitments') or [])}"]
@@ -83,17 +83,17 @@ def find_events(ctx, kind: str, limit: int = 10) -> list[dict]:
     """Pick interesting events to look at. kind: fault | blocked | suppressed | rejected | escalated
     | contacted | quarantined."""
     if kind == "fault":
-        rows = ctx.db.query("SELECT DISTINCT event_id, account_id FROM decision_log WHERE node='monitor' "
+        rows = ctx.db.query("SELECT DISTINCT event_id, customer_id FROM decision_log WHERE node='monitor' "
                             "ORDER BY id LIMIT ?", (limit,))
-        return [{"event_id": r["event_id"], "account_id": r["account_id"]} for r in rows]
+        return [{"event_id": r["event_id"], "customer_id": r["customer_id"]} for r in rows]
     if kind == "quarantined":
-        rows = ctx.db.query("SELECT account_id FROM borrower_state WHERE status!='ACTIVE' ORDER BY account_id LIMIT ?",
+        rows = ctx.db.query("SELECT customer_id FROM customer_state WHERE status!='ACTIVE' ORDER BY customer_id LIMIT ?",
                             (limit,))
-        return [{"event_id": None, "account_id": r["account_id"]} for r in rows]
+        return [{"event_id": None, "customer_id": r["customer_id"]} for r in rows]
     outcome = kind.upper()
-    rows = ctx.db.query("SELECT event_id, account_id FROM event_queue WHERE outcome=? ORDER BY seq LIMIT ?",
+    rows = ctx.db.query("SELECT event_id, customer_id FROM event_queue WHERE outcome=? ORDER BY seq LIMIT ?",
                         (outcome, limit))
-    return [{"event_id": r["event_id"], "account_id": r["account_id"]} for r in rows]
+    return [{"event_id": r["event_id"], "customer_id": r["customer_id"]} for r in rows]
 
 
 KINDS = ("fault", "blocked", "suppressed", "rejected", "escalated", "contacted", "quarantined")

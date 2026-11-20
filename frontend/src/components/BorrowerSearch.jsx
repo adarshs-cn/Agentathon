@@ -6,7 +6,7 @@ import { api } from '../api/client';
 import MonoId from './MonoId';
 import { tokens } from '../theme/muiTheme';
 
-// Jump to any borrower by account or customer number. Press "/" anywhere to focus it.
+// Jump to any customer by account or customer number. Press "/" anywhere to focus it.
 export default function BorrowerSearch({ width = 260 }) {
   const navigate = useNavigate();
   const [options, setOptions] = useState([]);
@@ -64,7 +64,7 @@ export default function BorrowerSearch({ width = 260 }) {
           <Stack sx={{ minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="baseline">
               <MonoId sx={{ fontSize: 12, fontWeight: 600, color: tokens.navbarBg }}>{o.account_id}</MonoId>
-              <MonoId sx={{ fontSize: 11, color: tokens.statLabelGrey }}>{o.borrower_id}</MonoId>
+              <MonoId sx={{ fontSize: 11, color: tokens.statLabelGrey }}>{o.customer_id}</MonoId>
             </Stack>
             <Typography sx={{ fontSize: 11, color: tokens.statLabelGrey }}>
               {o.name} · DPD {o.dpd} · {o.status}
@@ -77,7 +77,7 @@ export default function BorrowerSearch({ width = 260 }) {
         <TextField
           {...params}
           inputRef={inputRef}
-          placeholder="Find a borrower  ( / )"
+          placeholder="Find a customer or account  ( / )"
           InputProps={{
             ...params.InputProps,
             startAdornment: (

@@ -46,12 +46,17 @@ Supervisor-Agent-Orchestration/
 * **Graph** (`orchestrator/graph.py`, nodes in `orchestrator/nodes/`): `validate_event -> load_borrower -> guardrails -> route -> assign
   (take the ownership lock) -> channel agent (whatsapp | email | voice) -> validate_output -> commit -> close_event`, with a
   fault branch `monitor -> recover` (and an early "Stopped" exit when guardrails/route refuse).
-* **State**: `GraphState` (per event) vs `BorrowerState` (per borrower, table `borrower_state`). LangGraph checkpointer is
-  `SqliteSaver`, `thread_id = borrower`, so a crashed run resumes.
+* **Data model**: a CUSTOMER (`customer_id`) holds ACCOUNTs (`account_id`). Events arrive per account; the bus resolves the
+  customer (`event_queue.customer_id`), and `validate_event` does too if the graph is invoked directly. The account decides
+  the overdue stage (dpd, bucket -> role, message numbers); the customer is the unit for ownership/lease, limits, consent,
+  legal/settlement/restructure holds (any loan, R040-R042) and the lane (one journey at a time per customer).
+* **State**: `GraphState` per event holds `event`, `customer` (the person's file) and `account` (the loan); table
+  `customer_state` is the supervisor's per-customer record. LangGraph checkpointer is `SqliteSaver`, `thread_id = customer_id`.
+  Node `load_customer` (was `load_borrower`) loads both.
 * **Policy engine** `orchestrator/policy/d12.py` (`D12Policy`): `guard()` (borrower-level stops: deceased, DND, suppression, payment
   in last 48 h, ...) and `plan()` (role, channels, operating window, caps, call gap, budget). Every refusal carries rule ids.
   Hard contact window = **08:00-19:00 (R007)**; `engine.hard_window` is in minutes. Ownership: 24 h lease (R038) after a contact.
-* **Idempotency**: `contact_log` key `borrower|event_id`; a message is never sent twice. Provider `lookup` and `sent_message`.
+* **Idempotency**: `contact_log` key `customer|event_id`; a message is never sent twice. Each contact also records its `account_id`. Provider `lookup` and `sent_message`.
 * **Recovery** (`nodes/recovery.py`): faults CRASH, TIMEOUT, MALFORMED, NO_PROGRESS -> actions RESUME (retry), RESTART_SKIP_CURRENT
   (message already went out, do not resend), REROUTE_CHANNEL, ESCALATE, QUARANTINE. Rules decide; an optional LLM advisor
   (`orchestrator/llm/deepseek.py`) only picks among safe options for unscripted faults. Fault injection: `agents/fault_injector.py`
@@ -88,7 +93,8 @@ Supervisor-Agent-Orchestration/
 ## 5. Two databases, on purpose
 
 * **Real side** (`data/live/orchestrator.db`, `mode="live"`): dataset tables `ds_*` (20,000 accounts, 17,000 borrowers), the
-  supervisor's tables (`event_queue`, `decision_log`, `contact_log`, `borrower_state`, `borrower_profile`), `journey_run`,
+  supervisor's tables (`customer`, `account`, `customer_profile`, `customer_state`, `event_queue`, `decision_log`,
+  `contact_log`; the last three carry both `customer_id` and `account_id`), `journey_run` (both ids),
   `monitor_pool`, plus LangGraph checkpoints in `checkpoints.db` beside it. Tiles, Journey Runs, notifications, Accounts,
   Decision Log all read this.
 * **Demo side** (`data/demo/`, `mode="scenario"`): the same schema plus `demo_event`, `demo_setup`, `run_step`. Only the
@@ -258,5 +264,16 @@ Each step was asked for by the owner, built, tested against the real dataset, an
       confirmed) and recover (what was applied, what it means for the borrower) now say different things;
     * confirmed and tested: the live monitor never calls the LLM; narration exists only on the demo database.
     * Tests: backend phase 17 (9 tests) + full suite green; browser `e2e/studio.mjs` green with the real LLM; lint and build clean.
-11. **Next**: the owner has found "a serious gap" to take up next (not yet described).
+11. **Account / customer data model** (phase 18, uncommitted): the owner pointed out that events come per ACCOUNT while the
+    supervisor had flattened everything to the borrower (`account_id` actually held the borrower id, a leftover from the first
+    build where one borrower = one loan). Now: tables `customer` + `account` (+ `customer_profile`, `customer_state`), events
+    carry the real `account_id`, the bus resolves `customer_id`, one lane per customer, role from the event's account,
+    safety per customer (flags across all loans: R040-R042 are ownership rules), messages quote the event's account, every
+    record keeps both ids, screens say Customer and show the account. Old databases are refused and rebuilt (owner's choice).
+    Decisions: name `customer_id`; one journey at a time per customer; rebuild, not migrate.
+    Tests: new phase 18 (8 tests, incl. the field-visit example: one customer with a 0-DPD and a 60-DPD loan); full suite
+    green; browser tests studio/live/notify green (notify must run on its own fresh server: it waits for both scripted faults).
+12. **Next**: event sources. Events today come from lender data (simulated) and the monitor's schedule; delivery webhooks
+    from the communication agencies (delivered / read / failed / replied / promise captured) are not built. The owner is
+    deciding how to frame and build this.
 

@@ -51,18 +51,18 @@ class _Data:
     def get(self, b: str) -> dict:
         if b not in self._c:
             q = self.db.query
-            accounts = [dict(r) for r in q("SELECT * FROM ds_account WHERE borrower_id=?", (b,))]
+            accounts = [dict(r) for r in q("SELECT * FROM account WHERE customer_id=?", (b,))]
             worst = max(accounts, key=lambda a: a["dpd"]) if accounts else {"dpd": 0, "bucket": "0"}
             self._c[b] = {
-                "person": dict(self.db.one("SELECT * FROM ds_person WHERE borrower_id=?", (b,)) or {}),
-                "consent": dict(self.db.one("SELECT * FROM ds_consent WHERE borrower_id=?", (b,)) or {}),
+                "person": dict(self.db.one("SELECT * FROM customer WHERE customer_id=?", (b,)) or {}),
+                "consent": dict(self.db.one("SELECT * FROM ds_consent WHERE customer_id=?", (b,)) or {}),
                 "accounts": accounts, "dpd": worst["dpd"], "bucket": worst["bucket"],
                 "legal": any(a["legal_flag"] for a in accounts), "settlement": any(a["settlement_flag"] for a in accounts),
                 "restructure": any(a["restructure_flag"] for a in accounts),
-                "ptps": [dict(r) for r in q("SELECT * FROM ds_ptp WHERE borrower_id=?", (b,))],
-                "payments": [dict(r) for r in q("SELECT * FROM ds_payment WHERE borrower_id=?", (b,))],
-                "history": [dict(r) for r in q("SELECT at, agent, channel, disposition FROM ds_history WHERE borrower_id=?", (b,))],
-                "wrong_number": self.db.one("SELECT 1 FROM ds_history WHERE borrower_id=? AND disposition='wrong_number' LIMIT 1", (b,)) is not None,
+                "ptps": [dict(r) for r in q("SELECT * FROM ds_ptp WHERE customer_id=?", (b,))],
+                "payments": [dict(r) for r in q("SELECT * FROM ds_payment WHERE customer_id=?", (b,))],
+                "history": [dict(r) for r in q("SELECT at, agent, channel, disposition FROM ds_history WHERE customer_id=?", (b,))],
+                "wrong_number": self.db.one("SELECT 1 FROM ds_history WHERE customer_id=? AND disposition='wrong_number' LIMIT 1", (b,)) is not None,
             }
         return self._c[b]
 
@@ -124,7 +124,7 @@ def check_contact(d: dict, c: dict, strict_purpose: bool = True) -> list[tuple]:
 def audit_ours(db) -> list[tuple]:
     """Everything this supervisor sent, against every rule (caps and ownership included)."""
     data, v = _Data(db), []
-    rows = db.query("SELECT account_id b, channel, role, purpose action, at, event_id FROM contact_log "
+    rows = db.query("SELECT customer_id b, channel, role, purpose action, at, event_id FROM contact_log "
                     "WHERE status IN ('SENT','ATTEMPTING') ORDER BY at")
     ours = defaultdict(list)
     for r in rows:
@@ -200,7 +200,7 @@ def audit_history(db, as_of: str) -> list[tuple]:
     """The historical D4 contacts, checked with the single-contact rules (no purpose is known for them, so
     DND is checked strictly). Shows what the world looked like before there was a supervisor."""
     data, v = _Data(db), []
-    for r in db.query("SELECT borrower_id b, at, agent, channel FROM ds_history WHERE substr(at,1,10) <= ?", (as_of,)):
+    for r in db.query("SELECT customer_id b, at, agent, channel FROM ds_history WHERE substr(at,1,10) <= ?", (as_of,)):
         c = {"borrower": r["b"], "at": r["at"], "role": _role(r["agent"]), "channel": _chan(r["channel"]), "action": None}
         for code, rule, why in check_contact(data.get(r["b"]), c, strict_purpose=True):
             v.append((code, rule, r["b"], r["at"], why))

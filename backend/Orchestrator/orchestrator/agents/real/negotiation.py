@@ -38,8 +38,8 @@ class NegotiationAgent(ChannelAgent):
                               f"raise MT02_MAX_REAL_CALLS to place more")
         ctx = dict(req.context)
         payload = {
-            "borrower_id": req.account_id,
-            "account_id": req.account_id,
+            "borrower_id": req.customer_id,          # the voicebot's payload names (agents/real/voicebot.py)
+            "account_id": req.account_id or req.customer_id,
             "name": ctx.get("name", "Customer"),
             "phone": ctx.get("to_phone", ""),
             "language": "en",
@@ -59,7 +59,7 @@ class NegotiationAgent(ChannelAgent):
         message = {"channel": "voice", "to": payload["phone"], "subject": None, "body": res.get("script")}
         if res.get("script"):
             self._sent_text[req.idempotency_key] = message
-        return {"account_id": req.account_id, "status": "DONE", "outcome": "CONTACTED",
+        return {"customer_id": req.customer_id, "status": "DONE", "outcome": "CONTACTED",
                 "channel": "voice", "provider_ref": res.get("call_sid") or res.get("idempotency_key"),
                 "message": message}
 

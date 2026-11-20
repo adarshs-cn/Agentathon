@@ -8,7 +8,7 @@ export const TERMINAL_R = 34;
 export const POS = {
   __start__: [80, 660],
   validate_event: [270, 660],
-  load_borrower: [490, 660],
+  load_customer: [490, 660],
   guardrails: [710, 660],
   route: [930, 660],
   assign: [1150, 660],
@@ -28,7 +28,7 @@ const isTerminal = (id) => id.startsWith('__');
 const hw = (id) => (isTerminal(id) ? TERMINAL_R : NODE.w / 2);
 const hh = (id) => (isTerminal(id) ? TERMINAL_R : NODE.h / 2);
 const CHANNELS = ['whatsapp', 'email', 'voice'];
-const SPINE = ['validate_event', 'load_borrower', 'guardrails', 'route', 'assign'];
+const SPINE = ['validate_event', 'load_customer', 'guardrails', 'route', 'assign'];
 
 // An SVG path (cubic Bézier) for one edge, plus the point to place a moving pulse on.
 export function edgePath(from, to) {

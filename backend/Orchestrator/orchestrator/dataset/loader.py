@@ -149,8 +149,8 @@ def load_dataset(db: Database, store: BorrowerStore, folder: str | Path, as_of: 
 
     # ---- write everything in one transaction
     with db.transaction():
-        db.executemany("INSERT INTO ds_account VALUES (" + ",".join("?" * 14) + ")", acc_rows)
-        db.executemany("INSERT INTO ds_person VALUES (?,?,?,?,?,?,?)", person_rows)
+        db.executemany("INSERT INTO account VALUES (" + ",".join("?" * 14) + ")", acc_rows)
+        db.executemany("INSERT INTO customer VALUES (?,?,?,?,?,?,?)", person_rows)
         db.executemany("INSERT INTO ds_consent VALUES (" + ",".join("?" * 18) + ")", consent_rows)
         db.executemany("INSERT INTO ds_history VALUES (?,?,?,?,?,?)", hist_rows)
         db.executemany("INSERT INTO ds_ptp VALUES (?,?,?,?,?,?,?)", ptp_rows)
@@ -174,7 +174,7 @@ def load_dataset(db: Database, store: BorrowerStore, folder: str | Path, as_of: 
             if p[2] and c[1] not in ("denied", "revoked"):
                 chans.append("voice")
         seed.append((b, max(a[2] for a in accs), any(a[4] for a in accs), chans))
-    store.seed(seed)
+    store.seed(seed, accounts=False)          # the real accounts were loaded from D1 above
     open_by_b = defaultdict(list)
     for r in ptp_rows:
         if r[6] == "open" and r[2]:

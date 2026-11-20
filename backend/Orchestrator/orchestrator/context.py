@@ -41,15 +41,15 @@ class Context:
                    contacts=ContactLog(db), decisions=DecisionLog(db), bus=EventQueue(db),
                    registry=AgentRegistry(list(agents)), advisor=advisor)
 
-    def idem_key(self, account_id: str, event: dict) -> str:
-        """The contact's idempotency key. Simple mode: one contact per borrower per day. Dataset mode: one per
+    def idem_key(self, customer_id: str, event: dict) -> str:
+        """The contact's idempotency key. Simple mode: one contact per customer per day. Dataset mode: one per
         event, because D12 allows several contacts a day and the caps are enforced by counting (R009-R034)."""
-        return f"{account_id}|{event['id']}" if self.engine is not None else f"{account_id}|{event['time'][:10]}"
+        return f"{customer_id}|{event['id']}" if self.engine is not None else f"{customer_id}|{event['time'][:10]}"
 
     def log(self, state: dict, node: str, text: str, data: dict | None = None) -> None:
         ev = state.get("event") or {}
-        self.decisions.add(ev.get("time", ""), ev.get("id", ""), ev.get("account_id", ""),
-                           node, text, data)
+        self.decisions.add(ev.get("time", ""), ev.get("id", ""), ev.get("customer_id", ""),
+                           node, text, data, account_id=ev.get("account_id"))
 
     def instrument(self, name: str, fn: Callable) -> Callable:
         """Wrap a node: fire the test hook, and record how long it took."""

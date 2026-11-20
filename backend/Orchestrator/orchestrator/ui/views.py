@@ -1,5 +1,5 @@
 """Read-side views for the dashboard pages. Pure SELECTs over the supervisor's own SQLite tables:
-event_queue (the bus), decision_log (the audit trail), contact_log, borrower_state, and the ds_* dataset tables.
+event_queue (the bus), decision_log (the audit trail), contact_log, customer_state, and the ds_* dataset tables.
 
 Nothing here is computed from anything the supervisor did not write to the database.
 """
@@ -40,27 +40,27 @@ def fault_report(db, injector) -> list[dict]:
     out = []
     fired = getattr(injector, "fired", []) if injector else []
     for b in sorted({a for a, _, _ in fired}):
-        mon = _rows(db, "SELECT id FROM decision_log WHERE account_id=? AND node='monitor'", (b,))
-        st = db.one("SELECT owner, status FROM borrower_state WHERE account_id=?", (b,))
-        sent = db.one("SELECT COUNT(*) n FROM contact_log WHERE account_id=? AND status='SENT'", (b,))["n"]
-        open_ev = db.one("SELECT COUNT(*) n FROM event_queue WHERE account_id=? AND status IN ('PENDING','IN_PROGRESS')", (b,))["n"]
+        mon = _rows(db, "SELECT id FROM decision_log WHERE customer_id=? AND node='monitor'", (b,))
+        st = db.one("SELECT owner, status FROM customer_state WHERE customer_id=?", (b,))
+        sent = db.one("SELECT COUNT(*) n FROM contact_log WHERE customer_id=? AND status='SENT'", (b,))["n"]
+        open_ev = db.one("SELECT COUNT(*) n FROM event_queue WHERE customer_id=? AND status IN ('PENDING','IN_PROGRESS')", (b,))["n"]
         coherent = st is not None and st["owner"] is None and (sent > 0 or st["status"] != "ACTIVE")
-        out.append({"account_id": b, "faults": [f for a, _, f in fired if a == b], "monitored": bool(mon),
+        out.append({"customer_id": b, "faults": [f for a, _, f in fired if a == b], "monitored": bool(mon),
                     "recovered": bool(mon) and coherent and open_ev == 0, "contacts_sent": sent,
                     "status": st["status"] if st else None})
     return out
 
 
 def faults(db, injector) -> dict:
-    mon = _rows(db, "SELECT m.id, m.ts, m.event_id, m.account_id, m.text, m.data, q.outcome "
+    mon = _rows(db, "SELECT m.id, m.ts, m.event_id, m.customer_id, m.account_id, m.text, m.data, q.outcome "
                     "FROM decision_log m LEFT JOIN event_queue q ON q.event_id = m.event_id "
                     "WHERE m.node='monitor' ORDER BY m.id DESC")
     incidents = []
     for m in mon:
         d, rx = _data(m["data"]), MONITOR_RE.match(m["text"] or "")
         incidents.append({
-            "id": f"d{m['id']}", "event_id": m["event_id"], "ts": _z(m["ts"]), "account_id": m["account_id"],
-            "fault_type": rx.group(1) if rx else "?", "agent": rx.group(2) if rx else "?",
+            "id": f"d{m['id']}", "event_id": m["event_id"], "ts": _z(m["ts"]), "customer_id": m["customer_id"],
+            "account_id": m["account_id"], "fault_type": rx.group(1) if rx else "?", "agent": rx.group(2) if rx else "?",
             "action": d.get("action") or (rx.group(3) if rx else "?"), "reason": d.get("reason") or "",
             "provider_state": d.get("provider_state"), "advisor": d.get("advisor"),
             "outcome": m["outcome"],
@@ -79,7 +79,7 @@ def faults(db, injector) -> dict:
                     "resends_prevented": sum(1 for i in incidents if i["action"] == "RESTART_SKIP_CURRENT"),
                     "escalated": sum(1 for i in incidents if i["escalated"])},
         "incidents": incidents, "borrowers": report,
-        "script": [{"account_id": a, "call": n, "fault": k, "fired": (a, n, k) in set(injector.fired)}
+        "script": [{"customer_id": a, "call": n, "fault": k, "fired": (a, n, k) in set(injector.fired)}
                    for (a, n), k in sorted(injector.script.items())] if injector else [],
     }
 
@@ -100,8 +100,8 @@ def overview_numbers(db, ctx, injector, audit: dict) -> dict:
             "conflicting_contacts": audit.get("violations", 0),
             "faults_injected": len(rep), "faults_recovered": sum(1 for r in rep if r["recovered"]),
             "faults_scheduled": len({a for (a, _) in injector.script}) if injector else 0,
-            "borrowers_handled": q("SELECT COUNT(DISTINCT account_id) n FROM event_queue WHERE status='DONE' "
-                                   "AND outcome != 'REJECTED' AND account_id != ''")["n"],
+            "borrowers_handled": q("SELECT COUNT(DISTINCT customer_id) n FROM event_queue WHERE status='DONE' "
+                                   "AND outcome != 'REJECTED' AND customer_id != ''")["n"],
             "contacts_made": q("SELECT COUNT(*) n FROM contact_log WHERE status='SENT'")["n"],
             "blocked_or_deferred": sum(outcomes.get(k, 0) for k in REFUSALS),
             "events_total": q("SELECT COUNT(*) n FROM event_queue")["n"], "events_done": done,
@@ -157,7 +157,7 @@ def recent_events(db, limit: int = 40) -> list[dict]:
 # ---------------------------------------------------------------------- agents
 def agents(db, ctx) -> dict:
     stats = {n: {"calls": 0, "faults": 0, "ms": [], "last_fault": None} for n in CHANNEL_NODES}
-    for r in db.query("SELECT id, ts, event_id, account_id, node, data FROM decision_log WHERE node IN ('whatsapp','email','voice') ORDER BY id"):
+    for r in db.query("SELECT id, ts, event_id, customer_id, node, data FROM decision_log WHERE node IN ('whatsapp','email','voice') ORDER BY id"):
         d, s = _data(r["data"]), stats[r["node"]]
         s["calls"] += 1
         if "elapsed_ms" in d:
@@ -165,7 +165,7 @@ def agents(db, ctx) -> dict:
         resp = d.get("response") or {}
         if d.get("error") or (d.get("response") is not None and resp.get("status") != "DONE"):
             s["faults"] += 1
-            s["last_fault"] = {"ts": _z(r["ts"]), "account_id": r["account_id"], "event_id": r["event_id"],
+            s["last_fault"] = {"ts": _z(r["ts"]), "customer_id": r["customer_id"], "event_id": r["event_id"],
                                "what": d.get("error") or f"returned {resp.get('status') or 'junk'}"}
     sent = {r["channel"]: r["n"] for r in db.query("SELECT channel, COUNT(*) n FROM contact_log WHERE status='SENT' GROUP BY channel")}
     escalated = Counter(_data(r["data"]).get("agent") for r in db.query(
@@ -209,35 +209,35 @@ def agents(db, ctx) -> dict:
 # ---------------------------------------------------------------------- ownership
 def ownership(db, now: datetime) -> dict:
     now_s = now.isoformat()
-    leases = _rows(db, "SELECT account_id borrower_id, lease_owner role, lease_until until, last_contact, owner in_flight "
-                       "FROM borrower_state WHERE lease_owner IS NOT NULL AND lease_until > ? ORDER BY lease_until DESC LIMIT 100", (now_s,))
-    n_leases = db.one("SELECT COUNT(*) n FROM borrower_state WHERE lease_owner IS NOT NULL AND lease_until > ?", (now_s,))["n"]
+    leases = _rows(db, "SELECT customer_id customer_id, lease_owner role, lease_until until, last_contact, owner in_flight "
+                       "FROM customer_state WHERE lease_owner IS NOT NULL AND lease_until > ? ORDER BY lease_until DESC LIMIT 100", (now_s,))
+    n_leases = db.one("SELECT COUNT(*) n FROM customer_state WHERE lease_owner IS NOT NULL AND lease_until > ?", (now_s,))["n"]
     handoffs = []
-    for r in db.query("SELECT id, ts, event_id, account_id, text, data FROM decision_log WHERE node='assign' AND text LIKE 'HANDOFF%' ORDER BY id DESC LIMIT 100"):
+    for r in db.query("SELECT id, ts, event_id, customer_id, text, data FROM decision_log WHERE node='assign' AND text LIKE 'HANDOFF%' ORDER BY id DESC LIMIT 100"):
         d = _data(r["data"])
-        handoffs.append({"id": f"d{r['id']}", "ts": _z(r["ts"]), "event_id": r["event_id"], "borrower_id": r["account_id"],
+        handoffs.append({"id": f"d{r['id']}", "ts": _z(r["ts"]), "event_id": r["event_id"], "customer_id": r["customer_id"],
                          "from": d.get("from"), "to": d.get("to"), "rule_ids": d.get("rule_ids", []), "why": d.get("why", "")})
     conflicts = []
-    for r in db.query("SELECT id, ts, event_id, account_id, data FROM decision_log WHERE node='route' AND data LIKE '%R036%' ORDER BY id DESC LIMIT 200"):
+    for r in db.query("SELECT id, ts, event_id, customer_id, data FROM decision_log WHERE node='route' AND data LIKE '%R036%' ORDER BY id DESC LIMIT 200"):
         d = _data(r["data"])
         for cand in d.get("considered", []):
             if "R036" in (cand.get("rule_ids") or []):
-                conflicts.append({"id": f"d{r['id']}", "ts": _z(r["ts"]), "event_id": r["event_id"], "borrower_id": r["account_id"],
+                conflicts.append({"id": f"d{r['id']}", "ts": _z(r["ts"]), "event_id": r["event_id"], "customer_id": r["customer_id"],
                                   "blocked_role": cand["role"], "action": cand.get("action"), "rule_ids": cand["rule_ids"],
                                   "reason": cand.get("reason", "")})
-    locks = db.one("SELECT COUNT(*) n FROM borrower_state WHERE owner IS NOT NULL")["n"]
+    locks = db.one("SELECT COUNT(*) n FROM customer_state WHERE owner IS NOT NULL")["n"]
     simultaneous = []
     for r in db.query(
-            "SELECT a.account_id b, a.event_id a_id, a.event_time a_time, a.type a_type, a.outcome a_out, "
+            "SELECT a.customer_id b, a.event_id a_id, a.event_time a_time, a.type a_type, a.outcome a_out, "
             "b.event_id b_id, b.event_time b_time, b.type b_type, b.outcome b_out FROM event_queue a "
-            "JOIN event_queue b ON a.account_id = b.account_id AND a.seq < b.seq "
-            "WHERE a.status='DONE' AND b.status='DONE' AND a.account_id != '' AND a.event_id NOT LIKE '%~d%' "
+            "JOIN event_queue b ON a.customer_id = b.customer_id AND a.seq < b.seq "
+            "WHERE a.status='DONE' AND b.status='DONE' AND a.customer_id != '' AND a.event_id NOT LIKE '%~d%' "
             "AND b.event_id NOT LIKE '%~d%' AND (julianday(b.event_time) - julianday(a.event_time)) * 1440 BETWEEN 0 AND 5 "
             "ORDER BY b.event_time DESC LIMIT 100"):
         close = db.one("SELECT data FROM decision_log WHERE event_id=? AND node='close_event' ORDER BY id DESC LIMIT 1", (r["b_id"],))
         d = _data(close["data"]) if close else {}
         simultaneous.append({
-            "borrower_id": r["b"],
+            "customer_id": r["b"],
             "first": {"event_id": r["a_id"], "time": _z(r["a_time"]), "type": r["a_type"], "outcome": r["a_out"]},
             "second": {"event_id": r["b_id"], "time": _z(r["b_time"]), "type": r["b_type"], "outcome": r["b_out"],
                        "rule_ids": d.get("rule_ids", []), "reason": d.get("reason", "")},
@@ -270,8 +270,8 @@ def budgets(db, now: datetime) -> dict:
                           "spend_cap": c["spend_cap"], "window": c["window"], "buckets": c["buckets"].split("|"),
                           "utilisation": round(used / c["daily_budget"], 4) if c["daily_budget"] else 0.0})
     dist: Counter = Counter()
-    for r in db.query("SELECT n, COUNT(*) k FROM (SELECT b, COUNT(*) n FROM (SELECT borrower_id b FROM ds_history WHERE substr(at,1,10)=? "
-                      "UNION ALL SELECT account_id b FROM contact_log WHERE date=? AND status IN ('ATTEMPTING','SENT')) GROUP BY b) GROUP BY n", (today, today)):
+    for r in db.query("SELECT n, COUNT(*) k FROM (SELECT b, COUNT(*) n FROM (SELECT customer_id b FROM ds_history WHERE substr(at,1,10)=? "
+                      "UNION ALL SELECT customer_id b FROM contact_log WHERE date=? AND status IN ('ATTEMPTING','SENT')) GROUP BY b) GROUP BY n", (today, today)):
         dist["3+" if r["n"] >= 3 else str(r["n"])] += r["k"]
     return {"as_of": today, "resources": resources,
             "per_borrower_today": {k: dist.get(k, 0) for k in ("1", "2", "3+")},
@@ -286,6 +286,8 @@ def decisions(db, params: dict) -> dict:
     cond, args = ["q.status IN ('DONE','FAILED')"], []
     if params.get("outcome"):
         cond.append("q.outcome = ?"); args.append(params["outcome"])
+    if params.get("customer_id"):
+        cond.append("q.customer_id LIKE ?"); args.append(params["customer_id"].strip() + "%")
     if params.get("account_id"):
         cond.append("q.account_id LIKE ?"); args.append(params["account_id"].strip() + "%")
     if params.get("type"):
@@ -298,7 +300,7 @@ def decisions(db, params: dict) -> dict:
         args.append(f'%"agent": "{params["agent"]}"%')
     where = " WHERE " + " AND ".join(cond)
     total = db.one(f"SELECT COUNT(*) n FROM event_queue q{where}", args)["n"]
-    rows = _rows(db, "SELECT q.event_id, q.event_time, q.account_id, q.type, q.outcome, q.attempts, "
+    rows = _rows(db, "SELECT q.event_id, q.event_time, q.customer_id, q.account_id, q.type, q.outcome, q.attempts, "
                      "(SELECT data FROM decision_log d WHERE d.event_id=q.event_id AND d.node='close_event' ORDER BY d.id DESC LIMIT 1) close_data, "
                      "(SELECT data FROM decision_log d WHERE d.event_id=q.event_id AND d.node='route' ORDER BY d.id DESC LIMIT 1) route_data "
                      f"FROM event_queue q{where} ORDER BY q.event_time DESC, q.seq DESC LIMIT ? OFFSET ?", args + [size, (page - 1) * size])
@@ -306,7 +308,8 @@ def decisions(db, params: dict) -> dict:
     for r in rows:
         c, ro = _data(r["close_data"]), _data(r["route_data"])
         ids = c.get("rule_ids") or ro.get("rule_ids") or []
-        items.append({"event_id": r["event_id"], "ts": _z(r["event_time"]), "account_id": r["account_id"], "type": r["type"],
+        items.append({"event_id": r["event_id"], "ts": _z(r["event_time"]), "customer_id": r["customer_id"],
+                      "account_id": r["account_id"], "type": r["type"],
                       "outcome": r["outcome"], "agent": ro.get("agent") or c.get("agent"), "role": ro.get("role"),
                       "action": ro.get("action"), "rule_ids": ids, "attempts": r["attempts"],
                       "reason": c.get("reason") or ro.get("reason") or ""})
@@ -343,5 +346,5 @@ def trace(db, reader_ctx, any_id: str, limit: int = 50) -> dict | None:
         e["time"] = _z(e["time"])
         for s in e["steps"]:
             s["ts"] = _z(s["ts"]) if s.get("ts") else s.get("ts")
-    return {"borrower_id": b, "requested_id": any_id, "complete": t["complete"], "events": events,
+    return {"customer_id": b, "requested_id": any_id, "complete": t["complete"], "events": events,
             "contacts": t["contacts"], "event_count": len(t["events"])}

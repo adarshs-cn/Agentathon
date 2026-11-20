@@ -60,7 +60,7 @@ early exits (invalid / blocked / suppressed / lock lost) go straight to close_ev
 | | GraphState | BorrowerState |
 |---|---|---|
 | What | scratchpad for ONE event | the borrower's permanent file |
-| Where | LangGraph checkpoint (`thread_id = account_id`) | our `borrower_profile` + `borrower_state` tables |
+| Where | LangGraph checkpoint (`thread_id = customer_id`) | our `customer_profile` + `customer_state` tables |
 | Written by | every node (partial updates) | only assign, commit, release, recover |
 
 ## The safety design in one paragraph
@@ -92,7 +92,7 @@ class EmailAgentAdapter(ChannelAgent):
 * **Business policy** (`config.py`): 1 contact per borrower per day across all channels;
   DPD thresholds 30 and 90; channel preference per purpose; an open promise to pay
   suppresses contact; a legal flag outranks everything.
-* **Data.** Borrower facts come from a stand-in `borrower_profile` table (synthetic, 20,000
+* **Data.** Customer facts come from a stand-in `customer_profile` table (synthetic, 20,000
   accounts). The real D1/D2/D4/D6 adapter replaces `BorrowerStore.seed`/`load`. Channel
   availability and consent flags are assumed present; they are not in the data we were given.
 * **Unscripted faults** (e.g. a timeout) quarantine the borrower unless the LLM advisor is on.

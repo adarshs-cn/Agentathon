@@ -27,11 +27,11 @@ def live(tmp, faults="none"):
 @real
 def test_pool_is_fifteen_distinct_borrowers_and_is_kept_across_a_restart(tmp_path):
     a = live(tmp_path)
-    pool = [r["borrower_id"] for r in a.sup.ctx.db.query("SELECT borrower_id FROM monitor_pool ORDER BY rowid")]
+    pool = [r["customer_id"] for r in a.sup.ctx.db.query("SELECT customer_id FROM monitor_pool ORDER BY rowid")]
     assert len(pool) == 15 and len(set(pool)) == 15
     a.sup.close()
     b = live(tmp_path)
-    assert [r["borrower_id"] for r in b.sup.ctx.db.query("SELECT borrower_id FROM monitor_pool ORDER BY rowid")] == pool
+    assert [r["customer_id"] for r in b.sup.ctx.db.query("SELECT customer_id FROM monitor_pool ORDER BY rowid")] == pool
 
 
 @real

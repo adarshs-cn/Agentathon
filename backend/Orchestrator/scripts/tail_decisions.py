@@ -42,7 +42,7 @@ def main():
         rows = con.execute(q, params).fetchall()
         for r in rows:
             last_id = r["id"]
-            print(f"[{r['ts']}] {r['node']:<16} {r['account_id']:<12} {r['text']}")
+            print(f"[{r['ts']}] {r['node']:<16} {r['customer_id'] or '-':<10} {r['account_id'] or '-':<11} {r['text']}")
         time.sleep(a.interval)
 
 

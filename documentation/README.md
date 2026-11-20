@@ -55,4 +55,5 @@ Accounts grid, and the Decision Log. The refinement changes what the dashboard *
   zoom on the working step, unreached steps fade, a trace pad that streams each step (LLM explains five steps in at most two
   sentences, rule check for the rest), hover/click-to-pin to reread, slow reading pace. Tests: `tests/test_phase17_studio_narration.py`,
   `frontend/e2e/studio.mjs`. Full log: [10-handoff-context.md](10-handoff-context.md) section 14.
+* **Account / customer data model: built (uncommitted).** Events per account, safety per customer. See 10, section 14.
 * Still open: a real event feed (`POST /api/events`), borrower drawer, retiring the old screens for good, real message delivery.

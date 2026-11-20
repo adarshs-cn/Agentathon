@@ -44,8 +44,8 @@ def _compact(considered: list) -> list:
 
 def _route_d12(ctx: Context, state: GraphState) -> dict:
     t0 = time.perf_counter()
-    b, ev = state["borrower"], state["event"]
-    f = ctx.engine.facts(b["account_id"], datetime.fromisoformat(ev["time"]))
+    b, ev = state["customer"], state["event"]
+    f = ctx.engine.facts(b["customer_id"], datetime.fromisoformat(ev["time"]), ev.get("account_id"))
     p = ctx.engine.plan(f, ev)
     ms = round((time.perf_counter() - t0) * 1000, 4)
     ids = p["rule_ids"]
@@ -93,7 +93,7 @@ def make_route(ctx: Context):
         if ctx.engine is not None:
             return _route_d12(ctx, state)
         t0 = time.perf_counter()
-        b, ev = state["borrower"], state["event"]
+        b, ev = state["customer"], state["event"]
         date = ev["time"][:10]
         purpose, why, rule = decide_purpose(b, ev, ctx.policy)
         agent, fallbacks = None, []

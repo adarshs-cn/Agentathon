@@ -91,9 +91,9 @@ def test_the_llm_sees_no_identifiers(studio):
             pass
     assert llm.prompts
     ids = set()
-    for r in st.reader.query("SELECT p.borrower_id, p.name_masked, p.phone_masked, a.account_id FROM demo_event d "
-                             "JOIN ds_person p ON p.borrower_id=d.borrower_id JOIN ds_account a ON a.borrower_id=d.borrower_id"):
-        ids |= {r["borrower_id"], r["name_masked"], r["phone_masked"], r["account_id"]}
+    for r in st.reader.query("SELECT p.customer_id, p.name_masked, p.phone_masked, a.account_id FROM demo_event d "
+                             "JOIN customer p ON p.customer_id=d.customer_id JOIN account a ON a.customer_id=d.customer_id"):
+        ids |= {r["customer_id"], r["name_masked"], r["phone_masked"], r["account_id"]}
     for p in llm.prompts:
         assert not any(i and i in p for i in ids)
         assert not re.search(r"BRW\d+|ACC\d+|XXXXXX\d+|\*\*\*", p)
@@ -104,7 +104,7 @@ def test_rule_lines_and_prompt_are_built_from_state_alone():
           "borrower": {"account_id": "BRW00001", "dpd": 12, "channels": ["whatsapp"], "commitments": [], "status": "ACTIVE",
                        "owner": None, "legal_flag": False},
           "guard": {"ok": True}, "decision": {"role": "reminder", "agent": "whatsapp", "fallbacks": ["email"], "rule_ids": ["R001"]}}
-    for node in ("validate_event", "load_borrower", "guardrails", "route", "assign", "whatsapp", "validate_output",
+    for node in ("validate_event", "load_customer", "guardrails", "route", "assign", "whatsapp", "validate_output",
                  "commit", "release", "close_event"):
         lines = rule_lines(node, None, st)
         assert len(lines) >= 2 and lines[-1].startswith("=> "), node

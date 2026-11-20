@@ -27,7 +27,7 @@ from orchestrator.tracing.trace import account_trace
 class EventIn(BaseModel):
     id: Optional[str] = None
     type: Optional[str] = None
-    account_id: Optional[str] = None
+    account_id: Optional[str] = None      # events arrive per account; the supervisor finds the customer
     time: Optional[str] = None
     payload: Optional[dict] = None
 
@@ -61,18 +61,18 @@ def create_app(sup: Supervisor) -> FastAPI:
         return {"total": ctx.borrowers.count(), "limit": limit, "offset": offset,
                 "items": ctx.borrowers.list_accounts(limit, offset, status, owner)}
 
-    @app.get("/accounts/{account_id}")
-    def account(account_id: str):
-        b = ctx.borrowers.load(account_id)
+    @app.get("/accounts/{customer_id}")
+    def account(customer_id: str):
+        b = ctx.borrowers.load(customer_id)
         if b is None:
-            raise HTTPException(404, f"unknown account {account_id}")
+            raise HTTPException(404, f"unknown account {customer_id}")
         return b
 
-    @app.get("/accounts/{account_id}/trace")
-    def trace(account_id: str):
-        if not ctx.borrowers.exists(account_id):
-            raise HTTPException(404, f"unknown account {account_id}")
-        return account_trace(ctx, account_id, sup.graph)
+    @app.get("/accounts/{customer_id}/trace")
+    def trace(customer_id: str):
+        if not ctx.borrowers.exists(customer_id):
+            raise HTTPException(404, f"unknown account {customer_id}")
+        return account_trace(ctx, customer_id, sup.graph)
 
     @app.get("/events/{event_id}")
     def event(event_id: str):

@@ -1,5 +1,5 @@
 """PHASE 1 integration test: stores, event bus, and the stage-1 graph
-(validate_event -> load_borrower, with close_event for rejects), run through the real
+(validate_event -> load_customer, with close_event for rejects), run through the real
 LangGraph checkpointer."""
 from orchestrator.graph import build_graph
 from orchestrator.state.models import REJECTED
@@ -93,8 +93,8 @@ def test_bus_in_progress_survives_and_can_be_requeued(ctx):
 def test_stage1_loads_borrower_into_graph_state(ctx):
     g = build_graph(ctx, new_checkpointer(), stage=1)
     out = run(g, make_event("e1", account_id="B4"))
-    assert out["borrower"]["dpd"] == 45
-    assert out["borrower"]["account_id"] == "B4"
+    assert out["customer"]["dpd"] == 45
+    assert out["customer"]["customer_id"] == "B4"
     assert out["attempt"] == 0 and out["fault"] is None and out["outcome"] is None
     # the graph state holds a COPY: the store row is untouched
     assert ctx.borrowers.load("B4")["owner"] is None
@@ -130,7 +130,7 @@ def test_every_node_writes_to_the_decision_log(ctx):
     g = build_graph(ctx, new_checkpointer(), stage=1)
     run(g, make_event("e1", account_id="B1"))
     nodes = [r["node"] for r in ctx.decisions.for_event("e1")]
-    assert nodes == ["validate_event", "load_borrower"]
+    assert nodes == ["validate_event", "load_customer"]
     run(g, make_event("e2", account_id="NOPE"))
     assert [r["node"] for r in ctx.decisions.for_event("e2")] == ["validate_event", "close_event"]
 
@@ -145,5 +145,5 @@ def test_checkpoints_are_persisted_per_account(ctx):
     assert len(h1) >= 3 and len(h2) >= 3                    # input + one per node
     # a brand-new graph object on the same checkpointer reads the saved state back (restart)
     g2 = build_graph(ctx, cp, stage=1)
-    assert g2.get_state(thread_cfg("B1")).values["borrower"]["account_id"] == "B1"
-    assert g2.get_state(thread_cfg("B2")).values["borrower"]["account_id"] == "B2"
+    assert g2.get_state(thread_cfg("B1")).values["customer"]["customer_id"] == "B1"
+    assert g2.get_state(thread_cfg("B2")).values["customer"]["customer_id"] == "B2"

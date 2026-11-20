@@ -28,7 +28,7 @@ def test_trace_records_the_exact_request_and_response_of_the_agent():
     sup.run_until_empty()
     step = next(r for r in sup.ctx.decisions.for_event("e1") if r["node"] == "whatsapp")
     d = step["data"]
-    assert d["request"] == {"account_id": "B1", "purpose": "reminder", "template": "wa_template/reminder_v1",
+    assert d["request"] == {"customer_id": "B1", "account_id": "B1", "purpose": "reminder", "template": "wa_template/reminder_v1",
                             "idempotency_key": "B1|2026-11-20", "event_id": "e1", "time": "2026-11-20T09:00:00",
                             "role": "", "action": ""}
     assert d["response"]["status"] == "DONE" and d["response"]["provider_ref"].startswith("whatsapp-")
@@ -80,7 +80,7 @@ def test_the_narrator_prints_the_reasoning_live_in_order():
     sup.run_until_empty()
     text = "\n".join(lines)
     assert "== EVENT e1  DUE_SOON  account=B2" in text
-    nodes = ("validate_event", "load_borrower", "guardrails", "route", "assign", "whatsapp", "validate_output",
+    nodes = ("validate_event", "load_customer", "guardrails", "route", "assign", "whatsapp", "validate_output",
              "monitor", "recover", "commit", "release", "close_event")
     order = [text.index(f"\n  {n:<16} ") for n in nodes]            # match the node column, not stray words
     assert order == sorted(order)

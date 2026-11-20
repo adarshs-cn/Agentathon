@@ -6,7 +6,7 @@ from typing import Optional, Protocol
 
 
 class RecoveryAdvisor(Protocol):
-    def advise(self, fault: dict, agent: str, account_id: str, allowed: list[str]) -> tuple[Optional[str], Optional[str]]:
+    def advise(self, fault: dict, agent: str, customer_id: str, allowed: list[str]) -> tuple[Optional[str], Optional[str]]:
         """Return (action, short diagnosis). `action` must be one of `allowed`, or None to
         decline; the monitor ignores anything else and falls back to QUARANTINE."""
         ...

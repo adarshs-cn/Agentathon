@@ -35,7 +35,7 @@ const NAV_GROUPS = [
     ],
   },
 ];
-const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items).concat([{ to: '/trace', label: 'Borrower Trace' }]);
+const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items).concat([{ to: '/trace', label: 'Customer Trace' }]);
 
 const RAIL_WIDTH = 56;
 const EXPANDED_WIDTH = 230;

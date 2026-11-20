@@ -11,29 +11,29 @@ from __future__ import annotations
 from orchestrator.context import Context
 
 
-def account_trace(ctx: Context, account_id: str, graph=None) -> dict:
+def account_trace(ctx: Context, customer_id: str, graph=None) -> dict:
     steps_by_event: dict[str, list[dict]] = {}
-    for r in ctx.decisions.for_account(account_id):
+    for r in ctx.decisions.for_customer(customer_id):
         steps_by_event.setdefault(r["event_id"], []).append(
             {"node": r["node"], "text": r["text"], "data": r["data"], "ts": r["ts"]})
     events = []
-    for q in ctx.bus.for_account(account_id):
+    for q in ctx.bus.for_customer(customer_id):
         events.append({"event_id": q["event_id"], "type": q["type"], "time": q["event_time"],
                        "status": q["status"], "outcome": q["outcome"],
                        "steps": steps_by_event.get(q["event_id"], [])})
-    out = {"account_id": account_id, "borrower": ctx.borrowers.load(account_id),
-           "events": events, "contacts": ctx.contacts.rows_for(account_id),
-           "complete": not trace_gaps(ctx, account_id)}
+    out = {"customer_id": customer_id, "customer": ctx.borrowers.load(customer_id),
+           "events": events, "contacts": ctx.contacts.rows_for(customer_id),
+           "complete": not trace_gaps(ctx, customer_id)}
     if graph is not None:
         from orchestrator.supervisor import thread_config
-        out["checkpoints"] = len(list(graph.get_state_history(thread_config(account_id))))
+        out["checkpoints"] = len(list(graph.get_state_history(thread_config(customer_id))))
     return out
 
 
-def trace_gaps(ctx: Context, account_id: str) -> list[str]:
+def trace_gaps(ctx: Context, customer_id: str) -> list[str]:
     """Empty list = the trace is complete."""
     gaps = []
-    for q in ctx.bus.for_account(account_id):
+    for q in ctx.bus.for_customer(customer_id):
         nodes = {r["node"] for r in ctx.decisions.for_event(q["event_id"])}
         eid = q["event_id"]
         if q["status"] in ("PENDING", "IN_PROGRESS"):

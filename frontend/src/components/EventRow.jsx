@@ -50,7 +50,7 @@ export default function EventRow({ event, showAccount = true, onClick }) {
           </MonoId>
           {showAccount && (
             <MonoId sx={{ fontSize: 11, color: tokens.navbarBg, fontWeight: 600 }}>
-              {event.account_id}
+              {event.customer_id}{event.account_id && event.account_id !== '-' && event.account_id !== event.customer_id ? ` · ${event.account_id}` : ''}
             </MonoId>
           )}
           <Chip

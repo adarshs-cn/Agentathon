@@ -39,8 +39,8 @@ function Detail({ row, onClose }) {
           <MonoId className="tabular-nums" sx={{ fontSize: 11.5, color: tokens.statLabelGrey }}>{fmtDateTime(row.ts)}</MonoId>
         </Stack>
         <Box>
-          <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: tokens.statLabelGrey }}>Borrower</Typography>
-          <MonoId sx={{ fontSize: 13, fontWeight: 600, color: tokens.navbarBg }}>{row.account_id}</MonoId>
+          <Typography sx={{ fontSize: 10.5, fontWeight: 600, color: tokens.statLabelGrey }}>Customer · Account</Typography>
+          <MonoId sx={{ fontSize: 13, fontWeight: 600, color: tokens.navbarBg }}>{row.customer_id} · {row.account_id}</MonoId>
         </Box>
         {row.role && (
           <Box>
@@ -98,7 +98,7 @@ export default function Decisions() {
 
   const columns = [
     { field: 'ts', headerName: 'Time', width: 90, sortable: false, renderCell: (p) => <MonoId className="tabular-nums" sx={{ fontSize: 12 }}>{fmtTime(p.value)}</MonoId> },
-    { field: 'account_id', headerName: 'Borrower', width: 110, sortable: false, renderCell: (p) => <MonoId sx={{ fontSize: 12, fontWeight: 600, color: tokens.navbarBg }}>{p.value}</MonoId> },
+    { field: 'customer_id', headerName: 'Customer', width: 110, sortable: false, renderCell: (p) => <MonoId sx={{ fontSize: 12, fontWeight: 600, color: tokens.navbarBg }}>{p.value}</MonoId> },
     { field: 'type', headerName: 'Event', width: 175, sortable: false },
     { field: 'outcome', headerName: 'Outcome', width: 130, sortable: false, renderCell: (p) => <OutcomeChip outcome={p.value} /> },
     { field: 'role', headerName: 'Agent', width: 150, sortable: false, valueGetter: (p) => (p.row.role ? `${titleCase(p.row.role)} → ${p.row.agent}` : '—') },
@@ -140,7 +140,7 @@ export default function Decisions() {
               {AGENTS.map((o) => <MenuItem key={o} value={o}>{o}</MenuItem>)}
             </Select>
           </FormControl>
-          <TextField size="small" label="Borrower" value={filters.account_id} onChange={(e) => set('account_id', e.target.value)} sx={{ minWidth: 140 }} />
+          <TextField size="small" label="Account" value={filters.account_id} onChange={(e) => set('account_id', e.target.value)} sx={{ minWidth: 140 }} />
           {active > 0 && (
             <Button size="small" startIcon={<ClearAllIcon />} onClick={() => { setParams({}, { replace: true }); setPagination((p) => ({ ...p, page: 0 })); }} sx={{ color: tokens.navbarBg }}>
               Clear filters

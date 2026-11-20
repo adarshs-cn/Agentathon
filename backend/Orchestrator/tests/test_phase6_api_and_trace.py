@@ -53,10 +53,10 @@ def test_the_account_listing_shows_owner_last_contact_and_status(api):
     c.post("/events?process=true", json=ev("e2", "B8"))                          # B8's agent times out -> quarantined
     page = c.get("/accounts?limit=10").json()
     assert page["total"] == 10 and len(page["items"]) == 10
-    by = {i["account_id"]: i for i in page["items"]}
+    by = {i["customer_id"]: i for i in page["items"]}
     assert by["B1"]["last_contact"] == "2026-11-20T09:00:00" and by["B1"]["owner"] is None
     assert by["B8"]["status"] == "QUARANTINED" and by["B2"]["last_contact"] is None
-    assert [i["account_id"] for i in c.get("/accounts?status=QUARANTINED").json()["items"]] == ["B8"]
+    assert [i["customer_id"] for i in c.get("/accounts?status=QUARANTINED").json()["items"]] == ["B8"]
     assert len(c.get("/accounts?limit=3&offset=3").json()["items"]) == 3
     assert c.get("/accounts?limit=0").status_code == 422                         # bad pagination is rejected
 
@@ -73,7 +73,7 @@ def test_trace_tells_the_whole_story_of_a_faulted_account(api):
     c.post("/events?process=true", json=ev("e1", "B2"))                          # crashes after sending
     c.post("/events?process=true", json=ev("e2", "B2", "CONTACT_REQUESTED", "2026-11-20T11:00:00"))
     t = c.get("/accounts/B2/trace").json()
-    assert t["complete"] is True and t["borrower"]["last_contact"] == "2026-11-20T09:00:00"
+    assert t["complete"] is True and t["customer"]["last_contact"] == "2026-11-20T09:00:00"
     first, second = t["events"]
     assert first["outcome"] == "CONTACTED"
     nodes = [s["node"] for s in first["steps"]]

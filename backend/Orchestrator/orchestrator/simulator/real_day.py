@@ -63,8 +63,14 @@ def generate_real_day(db, n_primary: int = 800, seed: int = 1, as_of: str = "202
         n[0] += 1
         return f"rd-{n[0]:06d}"
 
-    def add(borrower: str, etype: str, when: str, group: str | None = None) -> dict:
-        e = {"id": eid(), "type": etype, "account_id": borrower, "time": when}
+    def worst_account(customer: str) -> str:
+        r = db.one("SELECT account_id FROM account WHERE customer_id=? ORDER BY dpd DESC, account_id LIMIT 1", (customer,))
+        return r["account_id"] if r else customer
+
+    def add(borrower: str, etype: str, when: str, group: str | None = None, account: str | None = None) -> dict:
+        """An event on one ACCOUNT of the customer (the given one, else their most overdue)."""
+        e = {"id": eid(), "type": etype, "account_id": account or worst_account(borrower), "customer_id": borrower,
+             "time": when}
         day.events.append(e)
         used.add(borrower)
         if group:
@@ -78,48 +84,50 @@ def generate_real_day(db, n_primary: int = 800, seed: int = 1, as_of: str = "202
     # the traps first, so they are always in the day
     for group, ids in _planted(planted_dir).items():
         for b in rng.sample(ids, min(planted_per_group, len(ids))):
-            if b not in used and db.one("SELECT 1 FROM ds_person WHERE borrower_id=?", (b,)):
+            if b not in used and db.one("SELECT 1 FROM customer WHERE customer_id=?", (b,)):
                 add(b, "OVERDUE", _ts(as_of, rng.randint(9 * 60, 17 * 60)), group)
 
-    pays = [dict(r) for r in q("SELECT borrower_id, at FROM ds_payment WHERE substr(at,1,10)=? AND status='success' "
-                               "AND reversal=0 AND borrower_id IS NOT NULL", (as_of,))]
+    # payments and promises are recorded per account (D7, D6): the event names that account
+    pays = [dict(r) for r in q("SELECT customer_id, account_id, at FROM ds_payment WHERE substr(at,1,10)=? AND status='success' "
+                               "AND reversal=0 AND customer_id IS NOT NULL ORDER BY txn_id", (as_of,))]
     for r in rng.sample(pays, min(len(pays), max(1, n_primary // 6))):
-        if r["borrower_id"] not in used:
-            add(r["borrower_id"], "PAYMENT_RECEIVED", r["at"][:16] + ":00")
+        if r["customer_id"] not in used:
+            add(r["customer_id"], "PAYMENT_RECEIVED", r["at"][:16] + ":00", account=r["account_id"])
 
-    due = [r["borrower_id"] for r in q("SELECT DISTINCT borrower_id FROM ds_ptp WHERE status='open' AND promised_date=?", (tomorrow,))]
-    for b in rng.sample(due, min(len(due), max(1, n_primary // 6))):
-        if b not in used:
-            add(b, "PTP_DUE", _ts(as_of, rng.randint(9 * 60, 12 * 60)))
+    due = [dict(r) for r in q("SELECT customer_id, MIN(account_id) account_id FROM ds_ptp WHERE status='open' AND promised_date=? "
+                              "GROUP BY customer_id ORDER BY customer_id", (tomorrow,))]
+    for r in rng.sample(due, min(len(due), max(1, n_primary // 6))):
+        if r["customer_id"] not in used:
+            add(r["customer_id"], "PTP_DUE", _ts(as_of, rng.randint(9 * 60, 12 * 60)), account=r["account_id"])
 
-    broken = [r["borrower_id"] for r in q("SELECT DISTINCT borrower_id FROM ds_ptp WHERE status='broken' AND promised_date IN (?,?)",
-                                          (yesterday, as_of))]
-    for b in rng.sample(broken, min(len(broken), max(1, n_primary // 8))):
-        if b not in used:
-            add(b, "PTP_BROKEN", _ts(as_of, rng.randint(9 * 60, 12 * 60)))
+    broken = [dict(r) for r in q("SELECT customer_id, MIN(account_id) account_id FROM ds_ptp WHERE status='broken' "
+                                 "AND promised_date IN (?,?) GROUP BY customer_id ORDER BY customer_id", (yesterday, as_of))]
+    for r in rng.sample(broken, min(len(broken), max(1, n_primary // 8))):
+        if r["customer_id"] not in used:
+            add(r["customer_id"], "PTP_BROKEN", _ts(as_of, rng.randint(9 * 60, 12 * 60)), account=r["account_id"])
 
     rest = n_primary - len(day.events)
     if rest > 0:
-        pool = [dict(r) for r in q("SELECT borrower_id, MAX(dpd) dpd FROM ds_account GROUP BY borrower_id")]
+        pool = [dict(r) for r in q("SELECT customer_id, MAX(dpd) dpd FROM account GROUP BY customer_id ORDER BY customer_id")]
         for r in rng.sample(pool, min(len(pool), rest * 2)):
             if len(day.events) >= n_primary:
                 break
-            if r["borrower_id"] in used:
+            if r["customer_id"] in used:
                 continue
-            add(r["borrower_id"], "DUE_SOON" if r["dpd"] == 0 else "OVERDUE", _ts(as_of, rng.randint(7 * 60, 20 * 60)))
+            add(r["customer_id"], "DUE_SOON" if r["dpd"] == 0 else "OVERDUE", _ts(as_of, rng.randint(7 * 60, 20 * 60)))
 
     base = list(day.events)
     for e in base:
         if rng.random() < conflict_rate:                    # a second event for the same borrower within minutes
             h, m = int(e["time"][11:13]), int(e["time"][14:16])
             day.events.append({"id": eid(), "type": "CONTACT_REQUESTED", "account_id": e["account_id"],
-                               "time": _ts(as_of, h * 60 + m + rng.randint(0, 3))})
-            day.conflict_accounts.add(e["account_id"])
+                               "customer_id": e["customer_id"], "time": _ts(as_of, h * 60 + m + rng.randint(0, 3))})
+            day.conflict_accounts.add(e["customer_id"])           # (customers with two events at once)
         if rng.random() < duplicate_rate:                   # the bus delivers the same event twice
             day.events.append(dict(e))
             day.duplicate_ids.add(e["id"])
     for _ in range(max(1, int(len(base) * bad_rate)) if bad_rate > 0 else 0):
-        bad = rng.choice([{"id": eid(), "type": "OVERDUE", "account_id": "BRW-NO-SUCH", "time": _ts(as_of, 600)},
+        bad = rng.choice([{"id": eid(), "type": "OVERDUE", "account_id": "ACC-NO-SUCH", "time": _ts(as_of, 600)},
                           {"id": eid(), "account_id": base[0]["account_id"], "time": _ts(as_of, 610)},
                           {"id": eid(), "type": "OVERDUE", "account_id": base[0]["account_id"], "time": "garbage"}])
         day.bad_event_ids.add(bad["id"])
@@ -133,8 +141,8 @@ def build_real_fault_script(day: Day, engine, kinds: list[str], seed: int = 3) -
     to, so each fault is certain to fire and to be recoverable (found by asking the engine, which writes nothing)."""
     first: dict[str, dict] = {}
     for e in day.events:
-        if e.get("account_id") and e.get("type") and e["id"] not in day.bad_event_ids:
-            first.setdefault(e["account_id"], e)
+        if e.get("customer_id") and e.get("type") and e["id"] not in day.bad_event_ids:
+            first.setdefault(e["customer_id"], e)             # faults are scripted per customer (the agent's caller)
     cands = []
     for b, e in first.items():
         if e["type"] not in ("OVERDUE", "DUE_SOON") or e["id"] in day.duplicate_ids or b in day.conflict_accounts:

@@ -175,16 +175,16 @@ function StartHere() {
   const { data: own } = useApi(() => api.ownership(), []);
   const picks = [
     ...(faults?.incidents || []).slice(0, 4).map((i) => ({ id: i.account_id, why: `${titleCase(i.fault_type.toLowerCase())} on ${i.agent}: ${titleCase(i.action.toLowerCase())}`, tone: 'fault' })),
-    ...(own?.handoffs || []).slice(0, 2).map((h) => ({ id: h.borrower_id, why: `handoff ${h.from} → ${h.to}`, tone: 'degraded' })),
+    ...(own?.handoffs || []).slice(0, 2).map((h) => ({ id: h.customer_id, why: `handoff ${h.from} → ${h.to}`, tone: 'degraded' })),
     ...(blocked?.items || []).slice(0, 3).map((d) => ({ id: d.account_id, why: `blocked by ${(d.rule_ids || []).join(', ')}`, tone: 'degraded' })),
     ...(deferred?.items || []).slice(0, 2).map((d) => ({ id: d.account_id, why: 'deferred to the next contact window', tone: 'healthy' })),
   ].filter((p) => p.id && p.id !== '-');
   return (
     <Stack spacing={2}>
-      <Section title="Find a borrower" subtitle="Any account or customer number. Press / on any page to jump here.">
+      <Section title="Find a customer" subtitle="Any account or customer number. Press / on any page to jump here.">
         <BorrowerSearch width="100%" />
       </Section>
-      <Section title="Interesting borrowers to look at" subtitle="Picked from what the supervisor has done so far in the simulated day">
+      <Section title="Interesting customers to look at" subtitle="Picked from what the supervisor has done so far in the simulated day">
         {picks.length === 0 ? (
           <EmptyState icon={PersonSearchIcon} title="Nothing to suggest yet" hint="Press play on the sim clock. Faults, handoffs and blocked contacts will be listed here so you can open their traces." />
         ) : (
@@ -215,7 +215,7 @@ export default function BorrowerTrace() {
     return (
       <Stack spacing={2}>
         <BorrowerSearch width={320} />
-        <Alert severity="warning" sx={{ borderRadius: 2 }}>No borrower found for “{account}”. Try an account number such as ACC000123 or a customer number such as BRW00123.</Alert>
+        <Alert severity="warning" sx={{ borderRadius: 2 }}>No customer found for “{account}”. Try an account number such as ACC000123 or a customer number such as BRW00123.</Alert>
       </Stack>
     );
   }
@@ -224,7 +224,7 @@ export default function BorrowerTrace() {
   return (
     <Stack spacing={2}>
       {s && (
-        <Section title={`Borrower ${s.borrower_id}`} subtitle={`Opened from ${s.requested_id}. Name and phone are masked in the database.`}>
+        <Section title={`Customer ${s.customer_id}`} subtitle={`Opened from ${s.requested_id}. Name and phone are masked in the database.`}>
           <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
             <Fact label="Customer">{s.name || '—'} <MonoId sx={{ fontSize: 11, color: tokens.statLabelGrey }}>{s.phone}</MonoId></Fact>
             <Fact label="Accounts">{s.accounts.length}</Fact>
@@ -256,10 +256,10 @@ export default function BorrowerTrace() {
       <Grid container spacing={2}>
         <Grid item xs={12} md={5}>{s && <Standing s={s} />}</Grid>
         <Grid item xs={12} md={7}>
-          <Section title="Everything that happened to this borrower" subtitle={t ? `${t.event_count} event${t.event_count === 1 ? '' : 's'} · trace ${t.complete ? 'complete' : 'has gaps'}` : ''}
+          <Section title="Everything that happened to this customer" subtitle={t ? `${t.event_count} event${t.event_count === 1 ? '' : 's'} · trace ${t.complete ? 'complete' : 'has gaps'}` : ''}
             action={<HistoryIcon sx={{ fontSize: 18, color: tokens.navbarBg }} />}>
             {!t || t.events.length === 0 ? (
-              <EmptyState icon={HistoryIcon} title="No events for this borrower yet" hint="Nothing has been routed to them in the simulated day so far. Press play, or open one of the suggested borrowers on this page's start screen." />
+              <EmptyState icon={HistoryIcon} title="No events for this customer yet" hint="Nothing has been routed to them in the simulated day so far. Press play, or open one of the suggested borrowers on this page's start screen." />
             ) : (
               <Timeline sx={{ p: 0, m: 0 }}>{t.events.map((e) => <EventCard key={e.event_id} e={e} />)}</Timeline>
             )}

@@ -36,7 +36,8 @@ def run_mini(m: Mini, tmp_path, events, script=None):
 
 
 def ev(id, b, type="OVERDUE", time="2026-10-31T10:00:00"):
-    return {"id": id, "type": type, "account_id": b, "time": time}
+    """An event on customer b's first account (the fixture names it '<b>a')."""
+    return {"id": id, "type": type, "account_id": f"{b}a", "time": time}
 
 
 def feed(sup, eid):
@@ -50,7 +51,7 @@ def test_a_contact_becomes_a_readable_story_with_only_known_types(tmp_path):
     out = feed(sup, "e1")
     assert [e["type"] for e in out] == ["ROUTING_DECISION", "OWNER_ASSIGNED", "CONTACT_ATTEMPTED", "COMMITMENT_RECORDED", "OWNER_RELEASED"]
     assert {e["type"] for e in out} <= UI_EVENT_TYPES
-    assert all(e["ts"].endswith("Z") and e["account_id"] == "T1" and e["event_id"].startswith("d") for e in out)
+    assert all(e["ts"].endswith("Z") and e["customer_id"] == "T1" and e["account_id"] == "T1a" and e["event_id"].startswith("d") for e in out)
     assert len({e["event_id"] for e in out}) == len(out)                                   # unique keys for React
     route = out[0]
     assert route["agent"] == "whatsapp" and "reminder" in route["decision"] and "whatsapp ok" in route["reason"]
@@ -142,7 +143,7 @@ def test_accounts_grid_filters_sorts_and_pages_over_all_20000(api):
     r = c.get("/api/accounts", params={"page": 1, "page_size": 25, "sort_by": "dpd", "sort_dir": "desc"}).json()
     assert r["total"] == 20000 and len(r["items"]) == 25
     row = r["items"][0]
-    columns = ["account_id", "borrower_id", "borrower_name", "product", "loan_amount", "total_outstanding", "principal_outstanding",
+    columns = ["account_id", "customer_id", "borrower_name", "product", "loan_amount", "total_outstanding", "principal_outstanding",
                "total_overdue", "installment_amount", "installment_overdue", "dpd", "delinquency_bucket", "account_status",
                "restructure_flag", "settlement_flag", "legal_flag", "case_owner_user_id", "last_disposition_date", "contact_no", "city"]
     assert set(columns) <= set(row)                                              # every column the grid defines
@@ -164,23 +165,23 @@ def test_search_finds_by_account_or_customer_number(api):
     a = c.get("/api/accounts/search", params={"q": "ACC0000"}).json()["items"]
     assert a and all(x["account_id"].startswith("ACC0000") for x in a)
     assert c.get("/api/accounts/search", params={"q": "A"}).json()["items"] == []                        # too short to search
-    b = c.get("/api/accounts/search", params={"q": a[0]["borrower_id"]}).json()["items"]
-    assert any(x["borrower_id"] == a[0]["borrower_id"] for x in b)
+    b = c.get("/api/accounts/search", params={"q": a[0]["customer_id"]}).json()["items"]
+    assert any(x["customer_id"] == a[0]["customer_id"] for x in b)
 
 
 @real
 def test_a_borrower_opens_by_account_or_customer_number_with_state_and_trace(api):
     c, st = api
-    row = st.reader.one("SELECT a.account_id, a.borrower_id FROM event_queue q JOIN ds_account a ON a.borrower_id=q.account_id "
+    row = st.reader.one("SELECT a.account_id, a.customer_id FROM event_queue q JOIN account a ON a.account_id=q.account_id "
                         "WHERE q.outcome='CONTACTED' LIMIT 1")
-    for any_id in (row["account_id"], row["borrower_id"]):
+    for any_id in (row["account_id"], row["customer_id"]):
         s = c.get(f"/api/borrowers/{any_id}/state").json()
-        assert s["borrower_id"] == row["borrower_id"] and s["accounts"]
+        assert s["customer_id"] == row["customer_id"] and s["accounts"]
         for k in ("facts", "state", "ownership", "caps", "holds", "probe", "recent_contacts", "consent"):
             assert k in s, k
         assert {"today", "week", "by_channel"} <= set(s["caps"]) and "guard" in s["probe"]
         t = c.get(f"/api/borrowers/{any_id}/trace").json()
-        assert t["borrower_id"] == row["borrower_id"] and t["complete"] is True and t["events"]
+        assert t["customer_id"] == row["customer_id"] and t["complete"] is True and t["events"]
         e = t["events"][0]
         assert {"event_id", "type", "time", "outcome", "steps", "feed"} <= set(e) and e["time"].endswith("Z")
         assert e["steps"][0]["node"] == "validate_event" and e["steps"][-1]["node"] == "close_event"
@@ -247,7 +248,7 @@ def test_no_personal_data_ever_leaves_the_api(api):
             if i == 400:
                 break
     bodies = [c.get("/api/accounts", params={"page_size": 200}).text, c.get("/api/overview").text, c.get("/api/decisions", params={"page_size": 200}).text]
-    some = st.reader.one("SELECT account_id FROM ds_account LIMIT 1")["account_id"]
+    some = st.reader.one("SELECT account_id FROM account LIMIT 1")["account_id"]
     bodies += [c.get(f"/api/borrowers/{some}/state").text, c.get(f"/api/borrowers/{some}/trace").text]
     blob = " ".join(bodies)
     leaks = [x for n, p, e in names for x in (n, p, e) if x and x in blob]

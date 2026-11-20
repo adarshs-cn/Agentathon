@@ -5,7 +5,7 @@ from orchestrator.state.models import REROUTE_CHANNEL, RESUME
 
 
 def after_validate_event(s) -> str:
-    return "close_event" if s.get("outcome") else "load_borrower"
+    return "close_event" if s.get("outcome") else "load_customer"
 
 
 def after_guardrails(s) -> str:

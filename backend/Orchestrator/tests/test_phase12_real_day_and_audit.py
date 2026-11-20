@@ -31,7 +31,7 @@ def planted(m: Mini, tmp_path, rows):
     sup = Supervisor()
     sup.load_dataset(m.write(tmp_path / "ds"))
     for i, (b, at, role, channel, action) in enumerate(rows):
-        sup.ctx.db.execute("INSERT INTO contact_log(idem_key, account_id, date, channel, purpose, status, role, at) "
+        sup.ctx.db.execute("INSERT INTO contact_log(idem_key, customer_id, date, channel, purpose, status, role, at) "
                            "VALUES (?,?,?,?,?,'SENT',?,?)", (f"{b}|x{i}", b, at[:10], channel, action, role, at))
     return audit_ours(sup.ctx.db)
 
@@ -161,8 +161,8 @@ def test_planted_trap_borrowers_are_handled_by_the_rules_not_by_luck(real_day):
     db = sup.ctx.db
     first = {}
     for e in day.events:
-        if e["id"] not in day.bad_event_ids:                 # the malformed events reuse real borrower ids
-            first.setdefault(e["account_id"], e)
+        if e["id"] not in day.bad_event_ids:                 # the malformed events reuse real accounts
+            first.setdefault(e["customer_id"], e)
 
     def status_of(b):
         r = db.one("SELECT outcome FROM event_queue WHERE event_id=?", (first[b]["id"],))
@@ -171,15 +171,15 @@ def test_planted_trap_borrowers_are_handled_by_the_rules_not_by_luck(real_day):
     for b in day.planted.get("deceased_borrowers_contacted_recently", []):
         assert status_of(b) == "BLOCKED", b                                   # R058: never
     for b in day.planted.get("dnd_fully_blocked_contacted", []):
-        rows = db.query("SELECT channel FROM contact_log WHERE account_id=? AND status='SENT'", (b,))
+        rows = db.query("SELECT channel FROM contact_log WHERE customer_id=? AND status='SENT'", (b,))
         assert all(r["channel"] != "voice" for r in rows), b                  # R050: no calls to DND borrowers
     for b in day.planted.get("optout_then_contact", []):
-        c = dict(db.one("SELECT * FROM ds_consent WHERE borrower_id=?", (b,)))
-        for r in db.query("SELECT channel FROM contact_log WHERE account_id=? AND status='SENT'", (b,)):
+        c = dict(db.one("SELECT * FROM ds_consent WHERE customer_id=?", (b,)))
+        for r in db.query("SELECT channel FROM contact_log WHERE customer_id=? AND status='SENT'", (b,)):
             ch = "call" if r["channel"] == "voice" else r["channel"]
             assert not c.get(f"optout_{ch}"), (b, ch)                         # R047: respect the opt-out
     for b in day.planted.get("expired_consent_before_contact", []):
-        rows = db.query("SELECT channel FROM contact_log WHERE account_id=? AND status='SENT'", (b,))
+        rows = db.query("SELECT channel FROM contact_log WHERE customer_id=? AND status='SENT'", (b,))
         assert all(r["channel"] != "whatsapp" for r in rows), b               # R048: expired consent = unknown = no WhatsApp
 
 

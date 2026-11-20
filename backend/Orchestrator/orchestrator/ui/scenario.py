@@ -13,15 +13,15 @@ from datetime import date, timedelta
 from orchestrator.agents.fault_injector import FaultInjector
 
 CLEAN = """
-  a.borrower_id IN (SELECT borrower_id FROM ds_account GROUP BY borrower_id HAVING COUNT(*)=1)
+  a.customer_id IN (SELECT customer_id FROM account GROUP BY customer_id HAVING COUNT(*)=1)
   AND p.deceased=0 AND p.shared_phone=0 AND p.has_phone=1
   AND c.suppression_reason='none' AND c.dnd_status='none' AND c.requested_window=''
   AND c.consent_source<>'' AND c.consent_expiry=''
   AND c.optout_call='' AND c.optout_sms='' AND c.optout_whatsapp='' AND c.optout_email=''
   AND a.settlement_flag=0 AND a.restructure_flag=0
-  AND NOT EXISTS (SELECT 1 FROM ds_history h WHERE h.borrower_id=a.borrower_id AND h.at >= ?)
-  AND NOT EXISTS (SELECT 1 FROM ds_ptp t WHERE t.borrower_id=a.borrower_id AND t.status='open')
-  AND NOT EXISTS (SELECT 1 FROM ds_payment y WHERE y.borrower_id=a.borrower_id AND y.at >= ?)
+  AND NOT EXISTS (SELECT 1 FROM ds_history h WHERE h.customer_id=a.customer_id AND h.at >= ?)
+  AND NOT EXISTS (SELECT 1 FROM ds_ptp t WHERE t.customer_id=a.customer_id AND t.status='open')
+  AND NOT EXISTS (SELECT 1 FROM ds_payment y WHERE y.customer_id=a.customer_id AND y.at >= ?)
 """
 WA = "c.consent_whatsapp='granted'"
 CALL = "c.consent_call='granted'"
@@ -88,11 +88,11 @@ def _setup(db, seq: int, kind: str, b: str, acc: str, as_of: str) -> None:
         db.execute("INSERT INTO demo_setup(seq, table_name, row_key) VALUES (?,?,?)", (seq, table, key))
 
     def ptp(pid, when, status):
-        db.execute("INSERT INTO ds_ptp(ptp_id, account_id, borrower_id, promised_date, amount, captured_by, status) "
+        db.execute("INSERT INTO ds_ptp(ptp_id, account_id, customer_id, promised_date, amount, captured_by, status) "
                    "VALUES (?,?,?,?,?,?,?)", (pid, acc, b, when, 5000, "reminder_agent", status))
         log("ds_ptp", pid)
     if kind == "reminder_contact_yesterday":
-        db.execute("INSERT INTO ds_history(borrower_id, account_id, at, agent, channel, disposition) VALUES (?,?,?,?,?,?)",
+        db.execute("INSERT INTO ds_history(customer_id, account_id, at, agent, channel, disposition) VALUES (?,?,?,?,?,?)",
                    (b, acc, f"{yesterday}T18:00:00", "reminder_agent", "whatsapp", "delivered"))
         log("ds_history", f"{b}@{yesterday}T18:00")
     elif kind == "open_promise_tomorrow":
@@ -102,7 +102,7 @@ def _setup(db, seq: int, kind: str, b: str, acc: str, as_of: str) -> None:
     elif kind == "open_promise_in_3_days":
         ptp(f"DEMO-{seq}", in3, "open")
     elif kind == "payment_today":
-        db.execute("INSERT INTO ds_payment(txn_id, account_id, borrower_id, at, amount, status, reversal) "
+        db.execute("INSERT INTO ds_payment(txn_id, account_id, customer_id, at, amount, status, reversal) "
                    "VALUES (?,?,?,?,?,?,?)", (f"DEMO-{seq}", acc, b, f"{as_of}T08:30:00", 5000, "success", 0))
         log("ds_payment", f"DEMO-{seq}")
 
@@ -112,22 +112,22 @@ def _pick(db, spec: Spec, used: set, chosen: dict, as_of: str):
     paid_since = (date.fromisoformat(as_of) - timedelta(days=3)).isoformat()
     if spec.where.startswith("SAME_AS:"):
         r = chosen[spec.where.split(":", 1)[1]]
-        return r["borrower_id"], r["account_id"], r["dpd"]
+        return r["customer_id"], r["account_id"], r["dpd"]
     where = spec.where
     if where.startswith("SUPPRESSED:"):
         reason = where.split(":", 1)[1]
-        sql = ("SELECT a.borrower_id, a.account_id, a.dpd FROM ds_account a JOIN ds_consent c ON c.borrower_id=a.borrower_id "
-               "JOIN ds_person p ON p.borrower_id=a.borrower_id WHERE c.suppression_reason=? AND a.dpd BETWEEN 1 AND 60 "
-               "AND a.borrower_id IN (SELECT borrower_id FROM ds_account GROUP BY borrower_id HAVING COUNT(*)=1) "
-               "ORDER BY a.borrower_id")
+        sql = ("SELECT a.customer_id, a.account_id, a.dpd FROM account a JOIN ds_consent c ON c.customer_id=a.customer_id "
+               "JOIN customer p ON p.customer_id=a.customer_id WHERE c.suppression_reason=? AND a.dpd BETWEEN 1 AND 60 "
+               "AND a.customer_id IN (SELECT customer_id FROM account GROUP BY customer_id HAVING COUNT(*)=1) "
+               "ORDER BY a.customer_id")
         rows = db.query(sql, (reason,))
     else:
-        sql = ("SELECT a.borrower_id, a.account_id, a.dpd FROM ds_account a JOIN ds_consent c ON c.borrower_id=a.borrower_id "
-               f"JOIN ds_person p ON p.borrower_id=a.borrower_id WHERE {CLEAN} AND {where} ORDER BY a.borrower_id")
+        sql = ("SELECT a.customer_id, a.account_id, a.dpd FROM account a JOIN ds_consent c ON c.customer_id=a.customer_id "
+               f"JOIN customer p ON p.customer_id=a.customer_id WHERE {CLEAN} AND {where} ORDER BY a.customer_id")
         rows = db.query(sql, (since, paid_since))
     for r in rows:
-        if r["borrower_id"] not in used:
-            return r["borrower_id"], r["account_id"], r["dpd"]
+        if r["customer_id"] not in used:
+            return r["customer_id"], r["account_id"], r["dpd"]
     raise LookupError(f"demo event '{spec.label}': the dataset has no borrower matching [{spec.where}]")
 
 
@@ -141,18 +141,18 @@ def build(sup, as_of: str, injector: FaultInjector) -> list[dict]:
     for seq, spec in enumerate(SPECS, 1):
         b, acc, dpd = _pick(db, spec, used, chosen, as_of)
         used.add(b)
-        chosen[spec.key] = {"borrower_id": b, "account_id": acc, "dpd": dpd}
+        chosen[spec.key] = {"customer_id": b, "account_id": acc, "dpd": dpd}
         if spec.setup:
             _setup(db, seq, spec.setup, b, acc, as_of)
         eid = f"demo-{seq:02d}"
-        sup.publish({"id": eid, "type": spec.etype, "account_id": b, "time": f"{as_of}T{spec.time}:00"})
+        sup.publish({"id": eid, "type": spec.etype, "account_id": acc, "time": f"{as_of}T{spec.time}:00"})
         n_calls = 3 if spec.fault == "LOOP" else 1
         if spec.fault:
             for n in range(1, n_calls + 1):
                 script[(b, n)] = spec.fault
-        db.execute("INSERT INTO demo_event(seq, key, label, event_id, borrower_id, event_type, depends_on, note) "
-                   "VALUES (?,?,?,?,?,?,?,?)", (seq, spec.key, spec.label, eid, b, spec.etype, spec.depends_on, spec.note))
-        rows.append({"seq": seq, "key": spec.key, "label": spec.label, "event_id": eid, "borrower_id": b,
+        db.execute("INSERT INTO demo_event(seq, key, label, event_id, customer_id, account_id, event_type, depends_on, note) "
+                   "VALUES (?,?,?,?,?,?,?,?,?)", (seq, spec.key, spec.label, eid, b, acc, spec.etype, spec.depends_on, spec.note))
+        rows.append({"seq": seq, "key": spec.key, "label": spec.label, "event_id": eid, "customer_id": b, "account_id": acc,
                      "event_type": spec.etype, "depends_on": spec.depends_on, "note": spec.note})
     injector.script = script
     return rows
@@ -168,11 +168,11 @@ def restore_faults(sup, injector: FaultInjector, rows: list[dict]) -> None:
             continue
         n_calls = 3 if spec.fault == "LOOP" else 1
         for n in range(1, n_calls + 1):
-            injector.script[(r["borrower_id"], n)] = spec.fault
+            injector.script[(r["customer_id"], n)] = spec.fault
         calls = sup.ctx.db.one("SELECT COUNT(*) n FROM decision_log WHERE event_id=? AND text LIKE 'attempt %' "
                                "AND node IN ('whatsapp','email','voice')", (r["event_id"],))["n"]
         if calls:
-            injector.calls[r["borrower_id"]] = calls
+            injector.calls[r["customer_id"]] = calls
             for n in range(1, calls + 1):
-                if (r["borrower_id"], n) in injector.script:
-                    injector.fired.append((r["borrower_id"], n, injector.script[(r["borrower_id"], n)]))
+                if (r["customer_id"], n) in injector.script:
+                    injector.fired.append((r["customer_id"], n, injector.script[(r["customer_id"], n)]))

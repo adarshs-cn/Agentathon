@@ -66,7 +66,7 @@ class RunManager:
             if self.active:
                 raise RunError(409, "Another event is running. Wait for it to finish.")
             self._run_no += 1
-            run = {"run_id": f"run-{self._run_no}", "event_id": event_id, "borrower_id": row["borrower_id"],
+            run = {"run_id": f"run-{self._run_no}", "event_id": event_id, "customer_id": row["customer_id"],
                    "pace_ms": max(0, int(pace_ms))}
             self.active = run
         th = threading.Thread(target=self._run, args=(run,), daemon=True, name=run["run_id"])
@@ -79,7 +79,7 @@ class RunManager:
     def _run(self, run: dict) -> None:
         st, sup = self.state, self.state.sup
         db, ctx = sup.ctx.db, sup.ctx
-        eid, b = run["event_id"], run["borrower_id"]
+        eid, b = run["event_id"], run["customer_id"]
         ev = ctx.bus.get(eid)
         owner = {"now": None, "seq": 0}
         try:
@@ -158,11 +158,11 @@ class RunManager:
         last = steps[-1]["did"] if steps else ""
         return {"run_id": run["run_id"], "event_id": run["event_id"], "outcome": status,
                 "outcome_label": reasons.OUTCOME_WORDS.get(status, status), "summary": last,
-                "owner_after": owner_after, "message": self.message(run["event_id"], run["borrower_id"])}
+                "owner_after": owner_after, "message": self.message(run["event_id"], run["customer_id"])}
 
     # ---------------------------------------------------------------- reading back
-    def message(self, event_id: str, borrower_id: str):
-        r = self.state.reader.one("SELECT message_json, status FROM contact_log WHERE idem_key=?", (f"{borrower_id}|{event_id}",))
+    def message(self, event_id: str, customer_id: str):
+        r = self.state.reader.one("SELECT message_json, status FROM contact_log WHERE idem_key=?", (f"{customer_id}|{event_id}",))
         return json.loads(r["message_json"]) if r and r["message_json"] else None
 
     def steps(self, event_id: str) -> list[dict]:

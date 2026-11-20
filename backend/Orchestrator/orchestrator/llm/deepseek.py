@@ -47,7 +47,7 @@ class DeepSeekAdvisor:
             'Reply with JSON only: {"action": "<one of the menu names>", '
             '"diagnosis": "<two sentences for an audit trace>"}')
 
-    def advise(self, fault: dict, agent: str, account_id: str, allowed: list[str]):
+    def advise(self, fault: dict, agent: str, customer_id: str, allowed: list[str]):
         # max_tokens covers the model's hidden reasoning AND its answer. At 400 the reasoning
         # alone used it all about half the time (finish_reason=length, empty or cut-off JSON).
         payload = {"model": self.model, "temperature": 0.2, "max_tokens": MAX_TOKENS,

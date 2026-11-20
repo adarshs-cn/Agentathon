@@ -45,7 +45,8 @@ def ui_events_for(rows: list[dict]) -> list[dict]:
     agent = role = None
     for r in rows:
         node, text, d = r["node"], r["text"] or "", r["data"] if isinstance(r["data"], dict) else {}
-        base = {"event_id": f"d{r['id']}", "ts": _z(r["ts"]), "account_id": r["account_id"] or "-",
+        base = {"event_id": f"d{r['id']}", "ts": _z(r["ts"]), "customer_id": r["customer_id"] or "-",
+                "account_id": r.get("account_id") or "-",
                 "source_event_id": r["event_id"], "rule_ids": list(d.get("rule_ids") or [])}
 
         def emit(type_, who, decision, reason, **extra):

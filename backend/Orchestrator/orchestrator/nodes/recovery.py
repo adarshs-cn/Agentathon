@@ -51,7 +51,7 @@ def _decide(ctx: Context, state: dict, provider: str, sent: bool) -> tuple[str, 
     allowed = ([RESUME] if n < pol.max_attempts_crash else []) + [give_up, QUARANTINE]
     if ctx.advisor is not None:
         try:
-            action, note = ctx.advisor.advise(fault, dec["agent"], state["borrower"]["account_id"], allowed)
+            action, note = ctx.advisor.advise(fault, dec["agent"], state["customer"]["customer_id"], allowed)
         except Exception:  # noqa: BLE001 - an advisor failure must never break recovery
             action, note = None, None
         if action in allowed:
@@ -62,7 +62,7 @@ def _decide(ctx: Context, state: dict, provider: str, sent: bool) -> tuple[str, 
 def make_monitor(ctx: Context):
     def monitor(state: GraphState) -> dict:
         ev, dec = state["event"], state["decision"]
-        acc = state["borrower"]["account_id"]
+        acc = state["customer"]["customer_id"]
         key = ctx.idem_key(acc, ev)
         try:
             provider = ctx.registry.get(dec["agent"]).lookup(key)
@@ -79,8 +79,8 @@ def make_monitor(ctx: Context):
 
 def make_recover(ctx: Context):
     def recover(state: GraphState) -> dict:
-        rec, dec, b, ev = state["recovery"], state["decision"], state["borrower"], state["event"]
-        acc = b["account_id"]
+        rec, dec, b, ev = state["recovery"], state["decision"], state["customer"], state["event"]
+        acc = b["customer_id"]
         key = ctx.idem_key(acc, ev)
         action = rec["action"]
 
@@ -94,7 +94,7 @@ def make_recover(ctx: Context):
             except Exception:  # noqa: BLE001
                 msg = None
             ctx.contacts.mark_sent(key, None, msg)
-            res = {"account_id": acc, "status": "DONE", "outcome": "CONTACTED",
+            res = {"customer_id": acc, "status": "DONE", "outcome": "CONTACTED",
                    "channel": dec["agent"], "via": "recovery"}
             ctx.log(state, "recover", "SKIP: contact confirmed by the provider, recorded as sent")
             return {"fault": None, "result": res}
@@ -105,7 +105,7 @@ def make_recover(ctx: Context):
             new_dec = {**dec, "agent": nxt, "fallbacks": rest,
                        "reason": f"{dec['reason']} | rerouted {dec['agent']} -> {nxt} after {state['fault']['type']}"}
             ctx.log(state, "recover", f"REROUTE_CHANNEL: {dec['agent']} -> {nxt}", new_dec)
-            return {"decision": new_dec, "attempt": 0, "fault": None, "borrower": {**b, "owner": nxt}}
+            return {"decision": new_dec, "attempt": 0, "fault": None, "customer": {**b, "owner": nxt}}
 
         # ESCALATE or QUARANTINE: stop automation for this borrower, keep every record.
         if rec["provider_state"] == "NOT_SENT":
@@ -113,5 +113,5 @@ def make_recover(ctx: Context):
         # else leave the ATTEMPTING row in place: it still counts against the daily cap and
         # is the evidence a human needs to resolve the unknown.
         ctx.log(state, "recover", f"{action}: automation stopped for {acc}, humans take over")
-        return {"fault": None, "result": {"account_id": acc, "status": "ESCALATED", "outcome": action}}
+        return {"fault": None, "result": {"customer_id": acc, "status": "ESCALATED", "outcome": action}}
     return recover

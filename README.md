@@ -26,6 +26,17 @@ press play) and `--mode scenario` (walkthrough only).
 
 ## How it works
 
+**Data model: customers and accounts.** A *customer* (the person, `customer_id`) holds one or more *accounts* (loans,
+`account_id`). **Events arrive per account** (`event_queue.account_id`); the bus looks up the customer who holds it
+(`event_queue.customer_id`). The account decides the overdue stage, so the role (a 60-DPD loan gets Negotiation, a 0-DPD
+loan a Reminder) and the numbers in the message. The customer is the unit for everything that protects the person:
+one owner and the 24-hour lease (R035-R038), contact limits across all their loans (R033), consent and Do-Not-Disturb,
+legal / settlement / restructure holds on any of their loans (R040-R042), and **one journey at a time per customer**
+(two loans of the same person never run at once). Contacts, decisions and journey runs record both ids. Tables:
+`customer`, `account`, `customer_profile`, `customer_state`, plus the dataset's `ds_*` tables keyed by `customer_id`
+(the CSV files call it `borrower_id`; it is mapped on load). A database in the older borrower-keyed layout is refused
+and rebuilt.
+
 **Two separate databases.** The *Workflow Studio* (15 demo scenarios run through the real graph) runs on its own database. It
 explains the workings and can be reset at any time; it never touches the numbers, runs, alerts or accounts.
 
@@ -68,7 +79,7 @@ through a second read-only connection. Nothing is mocked: the same LangGraph run
 | Workflow Studio | the compiled LangGraph, a demo scenario run step by step with zoom and a streamed trace pad (LLM for five steps) | `demo_event`, `run_step` (demo database) |
 | Journey Runs | one row per finished real run: borrower, event, channel, owner after, outcome, fault and recovery, duration | `journey_run` |
 | Decision Log | every decision with its reason and the D12 rule ids; filters live in the URL | `event_queue`, `decision_log` |
-| Accounts | all 20,000 accounts, server-side filter / sort / paging, live owner and last contact; a row opens the borrower trace | `ds_account`, `ds_person`, `contact_log`, `ds_history` |
+| Accounts | all 20,000 accounts, server-side filter / sort / paging, live owner and last contact; a row opens the customer trace | `account`, `customer`, `contact_log`, `ds_history` |
 
 API reference: see the docstring at the top of `backend/Orchestrator/orchestrator/ui/app.py`.
 

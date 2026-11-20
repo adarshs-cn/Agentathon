@@ -153,29 +153,35 @@ class D12Policy:
         return best, ids
 
     # ------------------------------------------------------------------ facts
-    def facts(self, borrower: str, now: datetime) -> Facts:
+    def facts(self, borrower: str, now: datetime, account_id: str | None = None) -> Facts:
+        """Everything the rules need about a CUSTOMER (`borrower`) at `now`. Consent, contacts, promises, payments and
+        ownership are the customer's (across all accounts: R033, R037). The legal / settlement / restructure flags
+        are customer-wide too: R040-R042 are ownership rules, so a legal case on ANY loan limits who may contact the
+        person at all. With `account_id` (the account an event is about) the overdue stage (dpd, bucket) is that
+        account's; without it, the worst account's (used for previews)."""
         today = now.date().isoformat()
         since = (now.date() - timedelta(days=6)).isoformat()
         q = self.db.query
-        accounts = [dict(r) for r in q("SELECT * FROM ds_account WHERE borrower_id=?", (borrower,))]
-        person = dict(self.db.one("SELECT * FROM ds_person WHERE borrower_id=?", (borrower,)) or {})
-        consent = dict(self.db.one("SELECT * FROM ds_consent WHERE borrower_id=?", (borrower,)) or {})
+        accounts = [dict(r) for r in q("SELECT * FROM account WHERE customer_id=?", (borrower,))]
+        person = dict(self.db.one("SELECT * FROM customer WHERE customer_id=?", (borrower,)) or {})
+        consent = dict(self.db.one("SELECT * FROM ds_consent WHERE customer_id=?", (borrower,)) or {})
         contacts = [Contact(_dt(r["at"]), _norm_channel(r["channel"]), _norm_role(r["agent"]), r["disposition"] or "")
-                    for r in q("SELECT at, agent, channel, disposition FROM ds_history WHERE borrower_id=? "
+                    for r in q("SELECT at, agent, channel, disposition FROM ds_history WHERE customer_id=? "
                                "AND substr(at,1,10) BETWEEN ? AND ?", (borrower, since, today))]
         for r in self.contact_log.recent(borrower, since, today):
             contacts.append(Contact(_dt(r["at"]) if r["at"] else now, _norm_channel(r["channel"]),
                                     _norm_role(r["role"] or r["purpose"]), "", "ours"))
-        ptps = [dict(r) for r in q("SELECT * FROM ds_ptp WHERE borrower_id=?", (borrower,))]
-        payments = [dict(r) for r in q("SELECT * FROM ds_payment WHERE borrower_id=? AND at >= ?",
+        ptps = [dict(r) for r in q("SELECT * FROM ds_ptp WHERE customer_id=?", (borrower,))]
+        payments = [dict(r) for r in q("SELECT * FROM ds_payment WHERE customer_id=? AND at >= ?",
                                        (borrower, (now - timedelta(days=3)).isoformat()))]
         f = Facts(borrower, now, today, accounts, person, consent, contacts, ptps, payments,
                   self.borrowers.get_lease(borrower))
-        f.wrong_number = self.db.one("SELECT 1 FROM ds_history WHERE borrower_id=? AND disposition='wrong_number' "
+        f.wrong_number = self.db.one("SELECT 1 FROM ds_history WHERE customer_id=? AND disposition='wrong_number' "
                                      "LIMIT 1", (borrower,)) is not None
         if accounts:
-            worst = max(accounts, key=lambda a: a["dpd"])
-            f.dpd, f.bucket = worst["dpd"], worst["bucket"]
+            this = next((a for a in accounts if a["account_id"] == account_id), None) if account_id else None
+            stage = this if this is not None else max(accounts, key=lambda a: a["dpd"] or 0)
+            f.dpd, f.bucket = stage["dpd"] or 0, stage["bucket"] or "0"
             f.legal = any(a["legal_flag"] for a in accounts)
             f.settlement = any(a["settlement_flag"] for a in accounts)
             f.restructure = any(a["restructure_flag"] for a in accounts)
@@ -459,7 +465,7 @@ class D12Policy:
 
     # ------------------------------------------------------------------ convenience: the whole verdict, no side effects
     def evaluate(self, borrower: str, event: dict) -> dict:
-        f = self.facts(borrower, _dt(event["time"]))
+        f = self.facts(borrower, _dt(event["time"]), event.get("account_id"))
         g = self.guard(f, event)
         if g["status"] != "OK":
             return {"guard": g, "plan": None, "final": g["status"]}

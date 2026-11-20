@@ -1,9 +1,9 @@
 """The two kinds of state, kept deliberately separate.
 
 GraphState     scratchpad for handling ONE event. Checkpointed by LangGraph after every
-               node (thread_id = account_id). Nodes return partial updates.
-BorrowerState  the borrower's permanent file. Lives in OUR tables (borrower_profile +
-               borrower_state). GraphState.borrower is a COPY loaded at the start of a
+               node (thread_id = customer_id). Nodes return partial updates.
+BorrowerState  the borrower's permanent file. Lives in OUR tables (customer_profile +
+               customer_state). GraphState.borrower is a COPY loaded at the start of a
                run; only assign / commit / release / recover write back to the store.
 
 Everything here is a plain dict at runtime (TypedDict is only a type hint) and must
@@ -34,18 +34,20 @@ QUARANTINE = "QUARANTINE"                  # cannot verify what happened: stop, 
 class Event(TypedDict, total=False):
     id: str            # unique; a repeated id is dropped by the bus
     type: str          # one of config.EVENT_TYPES
-    account_id: str
+    account_id: str    # events arrive per ACCOUNT (the loan they are about)
+    customer_id: str   # resolved by the bus from the account: the person who holds it
     time: str          # ISO 8601, e.g. "2026-11-20T09:00:00"
     payload: dict
 
 
 class BorrowerState(TypedDict):
+    """The CUSTOMER's file (across all their accounts)."""
     # facts, read-only (stand-in for D1/D2/D4/D6)
-    account_id: str
-    dpd: int
+    customer_id: str
+    dpd: int           # worst DPD across the customer's accounts
     legal_flag: bool
     channels: list     # channels this borrower can be reached on
-    # supervisor-owned record, read/write (our borrower_state table)
+    # supervisor-owned record, read/write (our customer_state table)
     owner: Optional[str]          # the one channel agent currently in charge
     last_contact: Optional[str]
     commitments: list             # open promises to pay
@@ -92,7 +94,8 @@ class Outcome(TypedDict, total=False):
 
 class GraphState(TypedDict, total=False):
     event: Event
-    borrower: BorrowerState
+    customer: BorrowerState    # the person: ownership, limits, consent apply here
+    account: dict              # the loan the event is about: its own dpd, bucket and flags
     guard: Optional[Guard]
     decision: Optional[Decision]
     attempt: int

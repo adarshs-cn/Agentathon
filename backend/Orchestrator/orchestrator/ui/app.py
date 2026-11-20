@@ -154,14 +154,14 @@ def create_dashboard_app(state: DemoState, demo: DemoState | None = None) -> Fas
 
     @app.get("/api/scenario/{event_id}/steps")
     def scenario_steps(event_id: str):
-        row = demo.reader.one("SELECT borrower_id FROM demo_event WHERE event_id=?", (event_id,))
+        row = demo.reader.one("SELECT customer_id FROM demo_event WHERE event_id=?", (event_id,))
         if row is None:
             raise HTTPException(404, f"{event_id} is not one of the demo events")
         q = demo.reader.one("SELECT status, outcome FROM event_queue WHERE event_id=?", (event_id,))
         steps = demo.runs.steps(event_id)
         return {"event_id": event_id, "status": q["status"], "outcome": q["outcome"],
                 "outcome_label": demo_views.reasons.OUTCOME_WORDS.get(q["outcome"]), "steps": steps,
-                "message": demo.runs.message(event_id, row["borrower_id"])}
+                "message": demo.runs.message(event_id, row["customer_id"])}
 
     @app.get("/api/overview/drilldown/{tile}")
     def overview_drilldown(tile: str):
@@ -202,8 +202,8 @@ def create_dashboard_app(state: DemoState, demo: DemoState | None = None) -> Fas
         return {"items": acct.search(state.reader, q)}
 
     @app.get("/api/borrowers/{any_id}/state")
-    def borrower_state(any_id: str):
-        s = acct.borrower_state(state.reader, state.engine, any_id, now())
+    def customer_state(any_id: str):
+        s = acct.customer_state(state.reader, state.engine, any_id, now())
         if s is None:
             raise HTTPException(404, f"unknown account or borrower {any_id}")
         return s

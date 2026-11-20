@@ -47,7 +47,7 @@ const g = await api('/api/graph');
 
 // the Overview no longer carries the walkthrough
 await send('Page.navigate', { url: UI });
-await waitFor("/Borrowers handled/.test(document.body.innerText)");
+await waitFor("/Customers handled/.test(document.body.innerText)");
 check(!(await ev("!!document.querySelector('[data-testid=event-picker]') || /Workflow walkthrough|Message sent\b(?! )|What happened/.test(document.body.innerText.replace('Messages sent',''))")), 'the Overview has only the live tiles (no walkthrough, phone or step log)');
 
 await send('Page.navigate', { url: UI + 'studio' });

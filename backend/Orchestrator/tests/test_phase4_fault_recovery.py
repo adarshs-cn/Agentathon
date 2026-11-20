@@ -191,7 +191,7 @@ def test_every_fault_leaves_a_complete_trail():
     run(g, make_event("e1", account_id="B1"))
     rows = ctx.decisions.for_event("e1")
     nodes = [r["node"] for r in rows]
-    assert nodes == ["validate_event", "load_borrower", "guardrails", "route", "assign", "whatsapp",
+    assert nodes == ["validate_event", "load_customer", "guardrails", "route", "assign", "whatsapp",
                      "validate_output", "monitor", "recover", "commit", "release", "close_event"]
     m = next(r for r in rows if r["node"] == "monitor")
     assert m["data"]["provider_state"] == "SENT" and "never call the agent again" in m["text"]

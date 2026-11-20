@@ -4,7 +4,7 @@
 graph be built up phase by phase (and tested at each phase): nodes introduced after
 `stage` are left out, and any edge that would lead to one ends the run instead.
 
-  stage 1  validate_event, load_borrower, close_event
+  stage 1  validate_event, load_customer, close_event
   stage 2  + guardrails, route
   stage 3  + assign, the channel agent nodes, validate_output, commit, release
   stage 4  + monitor, recover                      (the complete graph)
@@ -25,7 +25,7 @@ AGENT_STAGE = 3
 # node name -> (stage introduced, module in orchestrator.nodes, factory name)
 PLAIN_NODES = {
     "validate_event": (1, "intake", "make_validate_event"),
-    "load_borrower": (1, "intake", "make_load_borrower"),
+    "load_customer": (1, "intake", "make_load_customer"),
     "close_event": (1, "finish", "make_close_event"),
     "guardrails": (2, "guardrails", "make_guardrails"),
     "route": (2, "routing", "make_route"),
@@ -72,8 +72,8 @@ def build_graph(ctx: Context, checkpointer=None, stage: int = FINAL_STAGE):
             g.add_conditional_edges(src, fn, {d: target(d) for d in dests})
 
     g.add_edge(START, "validate_event")
-    cond("validate_event", edges.after_validate_event, ["load_borrower", "close_event"])
-    edge("load_borrower", "guardrails")
+    cond("validate_event", edges.after_validate_event, ["load_customer", "close_event"])
+    edge("load_customer", "guardrails")
     cond("guardrails", edges.after_guardrails, ["route", "close_event"])
     cond("route", edges.after_route, ["assign", "close_event"])
     cond("assign", edges.after_assign, agents + ["close_event"])

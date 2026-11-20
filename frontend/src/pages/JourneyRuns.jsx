@@ -46,7 +46,8 @@ export default function JourneyRuns() {
 
   const columns = [
     { field: 'finished', headerName: 'Ran at', width: 160, renderCell: (p) => when(p.row.finished_at) },
-    { field: 'borrower_id', headerName: 'Borrower', width: 110, renderCell: (p) => <MonoId>{p.value}</MonoId> },
+    { field: 'customer_id', headerName: 'Customer', width: 110, renderCell: (p) => <MonoId>{p.value}</MonoId> },
+    { field: 'account_id', headerName: 'Account', width: 110, sortable: false, renderCell: (p) => <MonoId>{p.value || '—'}</MonoId> },
     { field: 'name_masked', headerName: 'Name', width: 110, sortable: false, renderCell: (p) => p.value || '—' },
     { field: 'event_type', headerName: 'Event', width: 150, renderCell: (p) => words(p.value) },
     { field: 'channel', headerName: 'Channel', width: 100, sortable: false, renderCell: (p) => p.value || '—' },
@@ -65,7 +66,7 @@ export default function JourneyRuns() {
     <Stack spacing={1.5} sx={{ height: '100%' }}>
       <Paper sx={{ p: 1.5, borderRadius: 2.5 }}>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-          <TextField size="small" label="Borrower ID" value={filters.borrower_id || ''} onChange={set('borrower_id')} sx={{ width: 150 }} />
+          <TextField size="small" label="Customer ID" value={filters.customer_id || ''} onChange={set('customer_id')} sx={{ width: 150 }} />
           <FormControlLabel
             control={<Checkbox size="small" checked={!!filters.faults_only} onChange={(e) => { setFilters((f) => ({ ...f, faults_only: e.target.checked || undefined })); setPm((m) => ({ ...m, page: 0 })); }} />}
             label="Only runs with a fault"
@@ -86,7 +87,7 @@ export default function JourneyRuns() {
           rows={data?.items || []} columns={columns} getRowId={(r) => r.id} loading={loading}
           rowCount={data?.total || 0} paginationMode="server" sortingMode="server"
           paginationModel={pm} onPaginationModelChange={setPm} sortModel={sort} onSortModelChange={setSort}
-          pageSizeOptions={[25, 50, 100]} onRowClick={(r) => navigate(`/trace?account=${r.row.borrower_id}`)}
+          pageSizeOptions={[25, 50, 100]} onRowClick={(r) => navigate(`/trace?account=${r.row.account_id || r.row.customer_id}`)}
           density="compact" disableRowSelectionOnClick
           getRowClassName={(p) => (highlight.includes(p.row.event_id) ? 'hl' : '')}
           sx={{ border: 'none', fontSize: 12.5, '& .MuiDataGrid-columnHeaders': { backgroundColor: tokens.cardGroupedBg, fontSize: 10.5, fontWeight: 700, color: tokens.statTitleGrey }, '& .MuiDataGrid-row': { cursor: 'pointer' }, '& .hl': { backgroundColor: alpha(tokens.statusDegraded, 0.35), boxShadow: `inset 3px 0 0 ${tokens.statusFault}` } }}

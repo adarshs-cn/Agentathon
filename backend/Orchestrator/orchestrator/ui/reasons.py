@@ -99,10 +99,10 @@ def headline(db, rule_ids: list, fallback: str = "") -> str:
 
 
 # ---------------------------------------------------------------- stations (the nodes grouped for the drawing)
-STATION_OF = {"validate_event": "event", "load_borrower": "borrower", "guardrails": "safety", "route": "agent_chosen",
+STATION_OF = {"validate_event": "event", "load_customer": "borrower", "guardrails": "safety", "route": "agent_chosen",
               "assign": "ownership", "validate_output": "result", "monitor": "recover", "recover": "recover",
               "commit": "saved", "release": "saved", "close_event": "done"}
-STATIONS = [("event", "Event received"), ("borrower", "Borrower loaded"), ("safety", "Safety checks"),
+STATIONS = [("event", "Event received"), ("borrower", "Customer loaded"), ("safety", "Safety checks"),
             ("agent_chosen", "Agent chosen"), ("ownership", "Ownership taken"), ("agent_acts", "Agent acts"),
             ("result", "Result checked"), ("recover", "Recover"), ("saved", "State saved"), ("done", "Done"),
             ("stopped", "Stopped")]
@@ -120,7 +120,7 @@ def _role(r): return ROLE_WORDS.get(r, (r or "an").capitalize())
 
 def sentence(node: str, db, st: dict, ev_ms: float | None = None) -> tuple[str, str]:
     """(plain sentence, short label) for what the supervisor did at this node. `st` is the state after the node."""
-    b, g, d = st.get("borrower") or {}, st.get("guard") or {}, st.get("decision") or {}
+    b, g, d = st.get("customer") or {}, st.get("guard") or {}, st.get("decision") or {}
     out, res, f, rec = st.get("outcome") or {}, st.get("result") or {}, st.get("fault"), st.get("recovery") or {}
     ids = out.get("rule_ids") or g.get("rule_ids") or d.get("rule_ids") or []
     why = headline(db, ids, out.get("reason") or g.get("reason") or d.get("reason") or "")
@@ -129,9 +129,11 @@ def sentence(node: str, db, st: dict, ev_ms: float | None = None) -> tuple[str, 
         if status == "REJECTED":
             return f"Rejected: {out.get('reason')}.", "Invalid event"
         return "Checked the event is valid.", "Valid"
-    if node == "load_borrower":
-        n = db.one("SELECT COUNT(*) c FROM ds_account WHERE borrower_id=?", (b.get("account_id"),)) if db is not None else None
-        return (f"Opened the file: {b.get('dpd', 0)} days past due, {n['c'] if n else 1} account(s).", "Loaded")
+    if node == "load_customer":
+        n = db.one("SELECT COUNT(*) c FROM account WHERE customer_id=?", (b.get("customer_id"),)) if db is not None else None
+        a = st.get("account") or {}
+        return (f"Opened account {a.get('account_id', '')}: {a.get('dpd', b.get('dpd', 0))} days past due; "
+                f"the customer has {n['c'] if n else 1} account(s).", "Loaded")
     if node == "guardrails":
         if g.get("ok"):
             return "Allowed: no holds, and the contact limits are not reached.", "Allowed"

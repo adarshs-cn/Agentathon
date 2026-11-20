@@ -55,7 +55,7 @@ export default function NotificationBell() {
                   <Box sx={{ flex: 1 }}>
                     <Typography sx={{ fontSize: 13 }}>{i.message}</Typography>
                     <Typography sx={{ fontSize: 11, color: tokens.statLabelGrey, mt: 0.3 }}>
-                      {i.borrower_id} &middot; {when(i.finished_at)}
+                      Customer {i.customer_id}{i.account_id ? ` · account ${i.account_id}` : ''} &middot; {when(i.finished_at)}
                     </Typography>
                     <Stack direction="row" spacing={1} sx={{ mt: 0.8 }}>
                       <Button size="small" variant="outlined" onClick={() => markSeen([i.event_id])} data-testid="mark-read">

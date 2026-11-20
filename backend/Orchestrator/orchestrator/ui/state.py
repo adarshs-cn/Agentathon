@@ -121,7 +121,7 @@ class DemoState:
             if self.mode == "live":
                 pool = setup_pool(sup, AS_OF, self.seed)
                 if self.faults != "none" and len(pool) >= 7:                    # two scripted agent faults, first call only
-                    inj.script = {(pool[2]["borrower_id"], 1): "CRASH_AFTER_SEND", **{(pool[6]["borrower_id"], n): "LOOP" for n in (1, 2, 3)}}
+                    inj.script = {(pool[2]["customer_id"], 1): "CRASH_AFTER_SEND", **{(pool[6]["customer_id"], n): "LOOP" for n in (1, 2, 3)}}
                 self.day = None
                 self.runner.position = 86400 - 60
             elif self.mode == "scenario":
@@ -154,7 +154,7 @@ class DemoState:
         probe = Database(db_file, read_only=True)
         try:
             n = probe.one("SELECT COUNT(*) n FROM " + ("monitor_pool" if self.mode == "live" else "demo_event"))["n"]
-            ds = probe.one("SELECT COUNT(*) n FROM ds_account")["n"]
+            ds = probe.one("SELECT COUNT(*) n FROM account")["n"]
         except Exception:  # noqa: BLE001 - an older or damaged file: rebuild
             return False
         finally:

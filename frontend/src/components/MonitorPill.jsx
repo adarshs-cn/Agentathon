@@ -16,7 +16,7 @@ export default function MonitorPill() {
   const toggle = () => api.monitorControl(paused ? 'resume' : 'pause').catch(() => {});
   const tip = (
     <Stack spacing={0.3} sx={{ fontSize: 12 }}>
-      <span>Contact window {m.window}. {m.pool_size} borrowers watched, {m.pool_handled} handled so far.</span>
+      <span>Contact window {m.window}. {m.pool_size} customers watched, {m.pool_handled} handled so far.</span>
       {m.waiting > 0 && <span>{m.waiting} event{m.waiting === 1 ? '' : 's'} waiting for the window to open.</span>}
       {m.next_event_at && m.state === 'monitoring' && <span>Next scheduled event {m.next_event_at.slice(11, 16)}.</span>}
       {m.error && <span>Last problem: {m.error}</span>}

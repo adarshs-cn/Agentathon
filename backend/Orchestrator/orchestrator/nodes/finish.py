@@ -13,8 +13,8 @@ from orchestrator.state.models import CONTACTED, ESCALATE, ESCALATED, NEEDS_REVI
 
 def make_commit(ctx: Context):
     def commit(state: GraphState) -> dict:
-        acc, ev, res = state["borrower"]["account_id"], state["event"], state["result"]
-        b = dict(state["borrower"])
+        acc, ev, res = state["customer"]["customer_id"], state["event"], state["result"]
+        b = dict(state["customer"])
         if res["status"] == "DONE":
             ctx.borrowers.record_contact(acc, ev["time"])
             b["last_contact"] = ev["time"]
@@ -30,16 +30,16 @@ def make_commit(ctx: Context):
             ctx.borrowers.set_status(acc, status)
             b["status"] = status
             ctx.log(state, "commit", f"no contact made; borrower status set to {status}")
-        return {"borrower": b}
+        return {"customer": b}
     return commit
 
 
 def make_release(ctx: Context):
     def release(state: GraphState) -> dict:
-        acc = state["borrower"]["account_id"]
+        acc = state["customer"]["customer_id"]
         ctx.borrowers.release(acc)
         ctx.log(state, "release", "owner lock released")
-        return {"borrower": {**state["borrower"], "owner": None}}
+        return {"customer": {**state["customer"], "owner": None}}
     return release
 
 

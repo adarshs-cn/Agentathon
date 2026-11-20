@@ -42,7 +42,7 @@ def test_real_runs_are_saved_with_fault_and_recovery_and_notify_until_seen(tmp_p
 @real
 def test_saved_runs_and_unseen_notices_survive_a_restart(tmp_path):
     a = DemoState(tmp_path, REAL, mode="scenario")
-    a.sup.ctx.db.execute("INSERT INTO journey_run(event_id, borrower_id, outcome, fault, fault_agent, recovery_action, notify_seen, "
+    a.sup.ctx.db.execute("INSERT INTO journey_run(event_id, customer_id, outcome, fault, fault_agent, recovery_action, notify_seen, "
                          "finished_wall) VALUES ('real-1','BRW00001','CONTACTED','CRASH','whatsapp','RESUME',0,1.0)")
     a.sup.close()
     b = DemoState(tmp_path, REAL, mode="scenario")                       # new process, same folder
@@ -54,22 +54,15 @@ def test_saved_runs_and_unseen_notices_survive_a_restart(tmp_path):
     assert c.post("/api/notifications/seen", json={}).json()["unseen"] == 0
 
 
-def test_an_older_journey_run_table_is_upgraded_keeping_real_rows(tmp_path):
+def test_an_old_borrower_keyed_database_is_refused_so_it_gets_rebuilt(tmp_path):
     import sqlite3
     from orchestrator.stores.db import Database
     f = tmp_path / "o.db"
     c = sqlite3.connect(f)
-    c.executescript("CREATE TABLE journey_run (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, borrower_id TEXT, "
-                    "event_type TEXT, event_time TEXT, source TEXT NOT NULL, outcome TEXT, channel TEXT, role TEXT, owner_after TEXT, "
-                    "rule_ids TEXT, summary TEXT, started_wall REAL, finished_wall REAL, duration_ms REAL, attempts INTEGER);"
-                    "INSERT INTO journey_run(event_id, borrower_id, source, outcome) VALUES ('demo-01','B1','demo','CONTACTED'),"
-                    "('rd-1','B2','real','BLOCKED');")
+    c.executescript("CREATE TABLE borrower_state (account_id TEXT PRIMARY KEY, owner TEXT);")
     c.commit(); c.close()
-    db = Database(f)
-    cols = {r["name"] for r in db.query("PRAGMA table_info(journey_run)")}
-    assert {"fault", "recovery_action", "notify_seen"} <= cols and "source" not in cols
-    rows = db.query("SELECT event_id, notify_seen FROM journey_run")
-    assert [(r["event_id"], r["notify_seen"]) for r in rows] == [("rd-1", 1)]
+    with pytest.raises(RuntimeError, match="old borrower-keyed layout"):
+        Database(f)
 
 
 def test_alert_wording_names_the_agent_and_fault():
