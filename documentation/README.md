@@ -45,4 +45,9 @@ Accounts grid, and the Decision Log. The refinement changes what the dashboard *
   tile drilldowns. Tests: `backend/Orchestrator/tests/test_phase14_scenario.py` (all 15 events end as planned in 04).
 * **P2 workflow graph: built, awaiting your sign-off (gate G1).** Overview now shows the six clickable tiles, the live graph with the
   event picker and Run / Replay / Reset, the phone preview and the step log. Browser test: `frontend/e2e/overview.mjs`.
-* P3 (navigation down to Overview / Accounts / History, borrower drawer, Accounts demo-first, History in plain words) waits for G1.
+* **Navigation and live monitoring: built.** Sidebar is two modules (Journey Supervisor: Overview, Journey Runs, Decision Log; Loan
+  Management: Accounts). The demo walkthrough runs on its own database; the tiles, Journey Runs, alerts and Accounts are real only.
+  A background monitor watches a pool of 15 real borrowers inside the contact window (08:00-19:00, rule R007) and saves every run.
+  The bell shows unread fault alerts (Mark as read / Ignore). Tests: `tests/test_phase15_journey_runs.py`,
+  `tests/test_phase16_live_monitor.py`; browser tests: `frontend/e2e/live.mjs`, `frontend/e2e/notify.mjs`.
+* Still open: a real event feed (`POST /api/events`), borrower drawer, retiring the old screens for good, real message delivery.

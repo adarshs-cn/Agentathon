@@ -13,6 +13,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import ListAltIcon from '@mui/icons-material/ListAltOutlined';
 import { tokens } from '../theme/muiTheme';
 import { OVERVIEW_TITLE } from '../config/labels';
+import MonitorPill from '../components/MonitorPill';
 import SimClockMini from '../components/SimClockMini';
 import NotificationBell, { FaultToast } from '../components/NotificationBell';
 
@@ -72,14 +73,6 @@ export default function AppLayout() {
           sx={{ height: 50, px: 1.5, flexShrink: 0 }}
         >
           <TowerControlIcon sx={{ fontSize: 22, flexShrink: 0 }} />
-          {expanded && (
-            <Typography
-              noWrap
-              sx={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}
-            >
-              MT-02 SUPERVISOR
-            </Typography>
-          )}
         </Stack>
 
         <Stack sx={{ mt: 1, flex: 1 }}>
@@ -177,10 +170,8 @@ export default function AppLayout() {
           </Typography>
           <Stack direction="row" alignItems="center" spacing={2}>
             <SimClockMini />
+            <MonitorPill />
             <NotificationBell />
-            <Typography sx={{ fontSize: 11, color: tokens.statLabelGrey, display: { xs: 'none', lg: 'block' } }}>
-              Judge demo build &middot; all data synthetic
-            </Typography>
             <Avatar
               sx={{
                 width: 30,

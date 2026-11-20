@@ -43,22 +43,39 @@ def test_real_runs_are_saved_with_fault_and_recovery_and_notify_until_seen(tmp_p
 def test_saved_runs_and_unseen_notices_survive_a_restart(tmp_path):
     a = DemoState(tmp_path, REAL, mode="scenario")
     a.sup.ctx.db.execute("INSERT INTO journey_run(event_id, borrower_id, outcome, fault, fault_agent, recovery_action, notify_seen, "
-                         "finished_wall) VALUES ('real-1','BRW00001','CONTACTED','CRASH','whatsapp_agent','RESUME',0,1.0)")
+                         "finished_wall) VALUES ('real-1','BRW00001','CONTACTED','CRASH','whatsapp','RESUME',0,1.0)")
     a.sup.close()
     b = DemoState(tmp_path, REAL, mode="scenario")                       # new process, same folder
     c = TestClient(create_dashboard_app(b))
     assert c.get("/api/journeys").json()["total"] == 1
     n = c.get("/api/notifications").json()
-    assert n["unseen"] == 1 and "retried" in n["items"][0]["message"]
+    assert n["unseen"] == 1
+    assert n["items"][0]["message"] == "Alert Supervisor Agent - WhatsApp agent/Crash happened and recovering"
     assert c.post("/api/notifications/seen", json={}).json()["unseen"] == 0
 
 
-@real
-def test_walkthrough_reset_keeps_real_runs(tmp_path):
-    st = DemoState(tmp_path, REAL, mode="scenario")
-    st.sup.ctx.db.execute("INSERT INTO journey_run(event_id, borrower_id, outcome, fault, notify_seen, finished_wall) "
-                          "VALUES ('real-1','BRW00001','CONTACTED','CRASH',0,1.0)")
-    st.runs.start("demo-01", pace_ms=0, wait=True)
-    c = TestClient(create_dashboard_app(st))
-    assert c.post("/api/scenario/reset").json()["done"] == 0
-    assert c.get("/api/journeys").json()["total"] == 1 and c.get("/api/notifications").json()["unseen"] == 1
+def test_an_older_journey_run_table_is_upgraded_keeping_real_rows(tmp_path):
+    import sqlite3
+    from orchestrator.stores.db import Database
+    f = tmp_path / "o.db"
+    c = sqlite3.connect(f)
+    c.executescript("CREATE TABLE journey_run (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, borrower_id TEXT, "
+                    "event_type TEXT, event_time TEXT, source TEXT NOT NULL, outcome TEXT, channel TEXT, role TEXT, owner_after TEXT, "
+                    "rule_ids TEXT, summary TEXT, started_wall REAL, finished_wall REAL, duration_ms REAL, attempts INTEGER);"
+                    "INSERT INTO journey_run(event_id, borrower_id, source, outcome) VALUES ('demo-01','B1','demo','CONTACTED'),"
+                    "('rd-1','B2','real','BLOCKED');")
+    c.commit(); c.close()
+    db = Database(f)
+    cols = {r["name"] for r in db.query("PRAGMA table_info(journey_run)")}
+    assert {"fault", "recovery_action", "notify_seen"} <= cols and "source" not in cols
+    rows = db.query("SELECT event_id, notify_seen FROM journey_run")
+    assert [(r["event_id"], r["notify_seen"]) for r in rows] == [("rd-1", 1)]
+
+
+def test_alert_wording_names_the_agent_and_fault():
+    from orchestrator.ui.journeys import notice_text
+    f = lambda agent, fault: notice_text({"fault_agent": agent, "fault_label": fault})  # noqa: E731
+    assert f("whatsapp", "crash") == "Alert Supervisor Agent - WhatsApp agent/Crash happened and recovering"
+    assert f("email", "timeout") == "Alert Supervisor Agent - Email agent/Timeout happened and recovering"
+    assert f("voice", "stall") == "Alert Supervisor Agent - Voice agent/Stall happened and recovering"
+    assert f(None, None) == "Alert Supervisor Agent - Channel agent/Fault happened and recovering"

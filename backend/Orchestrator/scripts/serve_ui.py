@@ -29,8 +29,9 @@ def main():
     ap.add_argument("--seed", type=int, default=5)
     ap.add_argument("--faults", choices=["none", "public", "hidden"], default=os.environ.get("MT02_FAULTS", "hidden"))
     ap.add_argument("--data-dir", default=str(DATA_DIR / "ui"))
-    ap.add_argument("--mode", choices=["scenario", "day"], default=os.environ.get("MT02_MODE", "scenario"),
-                    help="scenario: 15 demo events run on demand (default); day: a simulated day on a clock")
+    ap.add_argument("--mode", choices=["live", "scenario", "day"], default=os.environ.get("MT02_MODE", "live"),
+                    help="live (default): a continuous monitor over a pool of real borrowers inside the contact window, plus the "
+                         "walkthrough on its own separate database; scenario: walkthrough only; day: a simulated day on a clock")
     ap.add_argument("--autoplay", action="store_true")
     ap.add_argument("--speed", type=int, default=60, choices=[1, 60, 300, 900], help="starting speed of the sim clock")
     a = ap.parse_args()
@@ -40,12 +41,18 @@ def main():
     advisor = build_advisor()
     print(f"loading the dataset and building the day ({a.events} events, faults={a.faults}, LLM advisor "
           f"{'on' if advisor else 'off'}) ...")
-    state = DemoState(a.data_dir, a.dataset, a.events, a.seed, a.faults, advisor, mode=a.mode)
-    state.runner.control("speed", {"speed": a.speed})
+    if a.mode == "live":
+        demo = DemoState(Path(a.data_dir).parent / "demo", a.dataset, a.events, a.seed, "none", advisor, mode="scenario")
+        state = DemoState(Path(a.data_dir).parent / "live", a.dataset, a.events, a.seed, a.faults, advisor, mode="live")
+        print(f"monitor: {state.monitor.status()['label']} (window {state.monitor.window[0] // 60:02d}:00-{state.monitor.window[1] // 60:02d}:00), "
+              f"pool of {state.monitor.status()['pool_size']} borrowers")
+    else:
+        state = demo = DemoState(a.data_dir, a.dataset, a.events, a.seed, a.faults, advisor, mode=a.mode)
+    demo.runner.control("speed", {"speed": a.speed})
     if a.autoplay and a.mode == "day":
         state.runner.control("play")
     print(f"ready: http://{a.host}:{a.port}/api/overview   (frontend: cd ../../frontend && npm run dev)")
-    uvicorn.run(create_dashboard_app(state), host=a.host, port=a.port, log_level="warning")
+    uvicorn.run(create_dashboard_app(state, demo), host=a.host, port=a.port, log_level="warning")
 
 
 if __name__ == "__main__":

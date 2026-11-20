@@ -1,4 +1,4 @@
-// End-to-end check of the fault bell in a real (headless) Chrome, with real clicks against the real API.
+// End-to-end check of the notification panel (live mode, two scripted faults) in a real (headless) Chrome, with real clicks against the real API.
 //   node e2e/notify.mjs [outDir] [width] [height]
 // Needs the API on :8001 and the UI on :5173 (see run_demo.sh). Exits non-zero on the first failed check.
 import { spawn } from 'node:child_process';
@@ -40,42 +40,58 @@ await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFac
 
 const waitFor = async (expr, ms = 20000) => { for (let t = 0; t < ms; t += 100) { if (await ev(expr)) return true; await sleep(100); } return false; };
 const count = () => ev("(document.querySelector('[data-testid=bell-count] .MuiBadge-badge:not(.MuiBadge-invisible)')||{}).innerText || '0'");
+const toastText = () => ev("(document.querySelector('.MuiSnackbar-root .MuiAlert-message')||{}).innerText || ''");
+const click = (sel) => ev(`document.querySelector('${sel}').click()`);
 
-// the collections manager is on Accounts doing analysis; the supervisor works in the background
-await send('Page.navigate', { url: UI + 'accounts' });
-check(await waitFor("!!document.querySelector('[data-testid=bell]')"), 'the header has a bell, not the borrower search box');
-check(!(await ev("document.body.innerText.includes('Find a borrower')")), 'the "Find a borrower" box is gone from the header');
-const sawToast = await waitFor("!!document.querySelector('.MuiSnackbar-root .MuiAlert-message')", 90000);
-check(sawToast, 'a drop-down notice appears at the top while the manager is on another screen');
-if (sawToast) {
-  const text = await ev("document.querySelector('.MuiSnackbar-root .MuiAlert-message').innerText");
-  const top = await ev("document.querySelector('.MuiSnackbar-root').getBoundingClientRect().top");
-  console.log('   notice:', text);
-  check(top < 120 && /hit a .* on .*\(BRW\d+\)\. The supervisor/.test(text), 'the notice is at the top and says who/what/what the supervisor did');
-  await shot('10-toast');
-}
+await send('Page.navigate', { url: UI });
+check(await waitFor("!!document.querySelector('[data-testid=bell]')"), 'the header has the bell');
+const text0 = await ev('document.body.innerText');
+check(!/Judge demo build|synthetic/.test(text0.split('CreditNirvana')[0]) && !text0.includes('Judge demo build'), 'the "Judge demo build" label is gone');
+check(!text0.includes('MT-02 SUPERVISOR'), 'the "MT-02 SUPERVISOR" label is gone');
+
+// 1st fault: the alert drops in; we IGNORE it
+check(await waitFor("!!document.querySelector('.MuiSnackbar-root .MuiAlert-message')", 170000), 'an alert drops in at the top when a fault happens');
+const t1 = await toastText();
+console.log('   alert:', t1.replace(/\s+/g, ' '));
+check(/^Alert Supervisor Agent - .+\/.+ happened and recovering/.test(t1), 'it reads "Alert Supervisor Agent - {Agent}/{fault} happened and recovering"');
+check(await ev("[...document.querySelectorAll('.MuiSnackbar-root button')].map(b=>b.innerText).join('|')") === 'Mark as read|Ignore', 'it offers Mark as read and Ignore');
+await shot('30-alert');
+await click('[data-testid=toast-ignore]');
+check(await waitFor("!document.querySelector('.MuiSnackbar-root .MuiAlert-message')", 5000), 'Ignore closes the alert');
+check(+(await count()) >= 1, `an ignored alert stays unread on the bell (${await count()})`);
+const unreadAfterIgnore = +(await count());
+
+// the bell opens a panel (it does not navigate) and lists the unread alert
+await click('[data-testid=bell]');
+check(await waitFor("!!document.querySelector('[data-testid=notif-panel]')"), 'clicking the bell opens a simple panel');
+check(await ev("location.pathname") === '/', 'and does not leave the current page');
+check(await ev("document.querySelectorAll('[data-testid=notif-item]').length") === unreadAfterIgnore, 'the panel lists the unread alert(s)');
+check(/Alert Supervisor Agent - /.test(await ev("document.querySelector('[data-testid=notif-item]').innerText")), 'with the alert message');
+await shot('31-panel');
+await click('[data-testid=bell]'); // MUI popover: close by Escape instead
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+await sleep(500);
+
+// 2nd fault: Mark as read from the alert itself
+check(await waitFor("!!document.querySelector('.MuiSnackbar-root .MuiAlert-message')", 200000), 'a second alert drops in');
 const before = +(await count());
-check(before >= 1, `the bell shows a number (${before})`);
-const unseenApi = (await (await fetch(`${API}/api/notifications`)).json()).unseen;
-check(unseenApi >= before, 'the number comes from the saved record');
+await click('[data-testid=toast-read]');
+await sleep(1200);
+check(+(await count()) === before - 1, 'marking the new alert as read takes it off the count');
+check(!(await ev("!!document.querySelector('.MuiSnackbar-root .MuiAlert-message')")), 'and closes the alert');
+await click('[data-testid=bell]');
+await waitFor("!!document.querySelector('[data-testid=notif-panel]')");
+check(await ev("document.querySelectorAll('[data-testid=notif-item]').length") === before - 1, 'the read alert is not in the panel; the ignored one is');
 
-await ev("document.querySelector('[data-testid=bell]').click()");
-check(await waitFor("location.pathname === '/runs' && location.search.includes('highlight=')"), 'clicking the bell opens Journey Runs with the runs to look at');
-check(await waitFor("document.querySelectorAll('.MuiDataGrid-row.hl').length >= 1"), 'the run(s) with the fault + recovery are highlighted');
-const hl = await ev("[...document.querySelectorAll('.MuiDataGrid-row.hl')].map(r=>r.innerText.replace(/\\s+/g,' ')).join(' || ')");
-console.log('   highlighted:', hl.slice(0, 260));
-check(/→/.test(hl), 'the highlighted row shows "fault → recovery"');
-check((await count()) === '0', 'the bell number vanishes once seen');
-await shot('11-runs-highlighted');
-await sleep(2500);
-const left = (await (await fetch(`${API}/api/notifications`)).json());
-check(left.items.every((i) => !hl.includes(i.event_id) || true), 'checked');
-await send('Page.reload');
-await sleep(2500);
-check(await waitFor("!!document.querySelector('[data-testid=bell]')"), 'bell is back after a reload');
-const after = await count();
-console.log('   after reload the bell shows', after, '(only faults that happened since)');
-check(+after <= +(left.unseen), 'a reload does not bring back the ones already seen');
+// mark the remaining one as read in the panel: panel empty, count gone
+await click('[data-testid=mark-read]');
+check(await waitFor("!!document.querySelector('[data-testid=notif-empty]')", 6000), 'once read, the panel is empty ("all caught up")');
+check((await count()) === '0', 'and the unread number vanishes from the bell');
+await shot('32-empty');
+await send('Page.reload'); await sleep(3000);
+await click('[data-testid=bell]');
+await waitFor("!!document.querySelector('[data-testid=notif-panel]')");
+check(await ev("!!document.querySelector('[data-testid=notif-empty]')") && (await count()) === '0', 'after a reload it is still empty (read state is saved)');
 console.log(problems.length ? 'page errors: ' + problems.join(' | ') : 'no page errors');
 check(problems.length === 0, 'no page errors');
 ws.close(); chrome.kill();

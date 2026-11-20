@@ -13,9 +13,6 @@ BASE = "FROM journey_run r LEFT JOIN ds_person p ON p.borrower_id = r.borrower_i
 
 FIX_SHORT = {"RESUME": "retried", "RESTART_SKIP_CURRENT": "not sent again", "REROUTE_CHANNEL": "other channel",
              "ESCALATE": "sent to a person", "QUARANTINE": "held for review"}
-FIX_LONG = {"RESUME": "retried it and it went through", "REROUTE_CHANNEL": "switched to another channel",
-            "RESTART_SKIP_CURRENT": "found the message had already gone out and did not send it again",
-            "ESCALATE": "sent it to a person to review", "QUARANTINE": "held it for a person to review"}
 FAULT_WORDS = {"CRASH": "crash", "TIMEOUT": "timeout", "MALFORMED": "garbled reply", "NO_PROGRESS": "stall"}
 
 
@@ -70,12 +67,15 @@ def notifications(db, limit: int = 20) -> dict:
     return {"unseen": n, "items": items}
 
 
+AGENT_WORDS = {"whatsapp": "WhatsApp agent", "email": "Email agent", "voice": "Voice agent"}
+
+
 def notice_text(r: dict) -> str:
-    who = r.get("name_masked") or r.get("borrower_id") or "a borrower"
-    chan = (r.get("fault_agent") or "the channel agent").replace("_agent", "").replace("_", " ")
-    fix = FIX_LONG.get(r.get("recovery_action"), "recovered it")
-    fault = r.get("fault_label") or "fault"
-    return f"The {chan} agent hit a {fault} on {who} ({r['borrower_id']}). The supervisor {fix}."
+    """The one-line alert: which agent, which fault, and that the supervisor is already recovering it."""
+    key = (r.get("fault_agent") or "").replace("_agent", "")
+    agent = AGENT_WORDS.get(key) or (f"{key.replace('_', ' ').capitalize()} agent" if key else "Channel agent")
+    fault = (r.get("fault_label") or "fault").capitalize()
+    return f"Alert Supervisor Agent - {agent}/{fault} happened and recovering"
 
 
 def mark_seen(db, event_ids: list[str] | None) -> int:

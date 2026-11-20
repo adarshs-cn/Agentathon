@@ -33,7 +33,10 @@ from orchestrator.ui.run import RunError
 from orchestrator.ui.state import DemoState
 
 
-def create_dashboard_app(state: DemoState) -> FastAPI:
+def create_dashboard_app(state: DemoState, demo: DemoState | None = None) -> FastAPI:
+    """`state` is the real (monitored) side: tiles, accounts, journey runs, notifications. `demo` is the walkthrough's own
+    separate database (the Overview graph). With no `demo`, one state serves both (older single-database setups)."""
+    demo = demo or state
     app = FastAPI(title="MT-02 Journey Supervisor: dashboard API", version="1.0")
     origins = os.environ.get("MT02_CORS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173").split(",")
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
@@ -45,6 +48,21 @@ def create_dashboard_app(state: DemoState) -> FastAPI:
     @app.get("/api/overview")
     def overview():
         return state.overview()
+
+    @app.get("/api/monitor")
+    def monitor_status():
+        if state.monitor is None:
+            raise HTTPException(404, "this server has no live monitor")
+        return state.monitor.status()
+
+    @app.post("/api/monitor/{action}")
+    def monitor_control(action: str):
+        if state.monitor is None:
+            raise HTTPException(404, "this server has no live monitor")
+        if action not in ("pause", "resume"):
+            raise HTTPException(400, "action must be pause or resume")
+        state.monitor.paused = action == "pause"
+        return state.monitor.status()
 
     @app.get("/api/simulation")
     def simulation():
@@ -63,7 +81,7 @@ def create_dashboard_app(state: DemoState) -> FastAPI:
     @app.get("/api/stream")
     async def stream(request: Request):
         async def gen():
-            q = state.runs.subscribe()
+            q = demo.runs.subscribe()
             try:
                 last_seq = await run_in_threadpool(state.max_done_seq)
                 last_counters = last_poll = 0.0
@@ -96,46 +114,51 @@ def create_dashboard_app(state: DemoState) -> FastAPI:
                             yield f"event: counters\ndata: {json.dumps(snap)}\n\n"
                     await asyncio.sleep(0.04)
             finally:
-                state.runs.unsubscribe(q)
+                demo.runs.unsubscribe(q)
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # ------------------------------------------------------------ the scenario (Overview walkthrough)
     @app.get("/api/scenario")
     def scenario_list():
-        act = state.runs.active
-        return demo_views.scenario(state.reader, act["event_id"] if act else None)
+        act = demo.runs.active
+        return demo_views.scenario(demo.reader, act["event_id"] if act else None)
 
     @app.post("/api/scenario/reset")
     def scenario_reset():
-        if state.runs.active:
+        if demo.runs.active:
             raise HTTPException(409, "An event is running. Wait for it to finish.")
-        state.reset()
-        return demo_views.scenario(state.reader)
+        demo.reset()
+        return demo_views.scenario(demo.reader)
 
     @app.post("/api/scenario/{event_id}/run")
     def scenario_run(event_id: str, pace_ms: int = Query(650, ge=0, le=3000)):
-        if state.mode != "scenario":
+        if demo.mode != "scenario":
             raise HTTPException(400, "the server is in day mode")
         try:
-            return state.runs.start(event_id, pace_ms)
+            return demo.runs.start(event_id, pace_ms)
         except RunError as e:
             raise HTTPException(e.status, e.message)
 
     @app.get("/api/scenario/{event_id}/steps")
     def scenario_steps(event_id: str):
-        row = state.reader.one("SELECT borrower_id FROM demo_event WHERE event_id=?", (event_id,))
+        row = demo.reader.one("SELECT borrower_id FROM demo_event WHERE event_id=?", (event_id,))
         if row is None:
             raise HTTPException(404, f"{event_id} is not one of the demo events")
-        q = state.reader.one("SELECT status, outcome FROM event_queue WHERE event_id=?", (event_id,))
-        steps = state.runs.steps(event_id)
+        q = demo.reader.one("SELECT status, outcome FROM event_queue WHERE event_id=?", (event_id,))
+        steps = demo.runs.steps(event_id)
         return {"event_id": event_id, "status": q["status"], "outcome": q["outcome"],
                 "outcome_label": demo_views.reasons.OUTCOME_WORDS.get(q["outcome"]), "steps": steps,
-                "message": state.runs.message(event_id, row["borrower_id"])}
+                "message": demo.runs.message(event_id, row["borrower_id"])}
 
     @app.get("/api/overview/drilldown/{tile}")
     def overview_drilldown(tile: str):
-        d = demo_views.drilldown(state.reader, state.sup.injector, state.audit, tile)
+        if state.mode != "live":
+            d = demo_views.drilldown(state.reader, state.sup.injector, state.audit, tile)
+        else:
+            d = demo_views.drilldown(state.reader, state.sup.injector, state.audit, tile, rows=demo_views.real_rows(state.reader),
+                                     latency=views.overview_numbers(state.reader, state.sup.ctx, state.sup.injector, state.audit)["latency_ms"],
+                                     live=True)
         if d is None:
             raise HTTPException(404, f"unknown tile {tile}")
         return d

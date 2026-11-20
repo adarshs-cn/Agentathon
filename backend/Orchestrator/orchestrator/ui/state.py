@@ -30,17 +30,21 @@ from orchestrator.supervisor import Supervisor
 from orchestrator.ui import views
 from orchestrator.ui.events import ui_events_for
 from orchestrator.ui import scenario
+from orchestrator.ui.monitor import LiveMonitor, setup_pool
 from orchestrator.ui.run import RunManager
 from orchestrator.ui.runner import SimulationRunner
 
 
+POOL = 15
+
+
 class DemoState:
     def __init__(self, data_dir: str | Path, dataset_dir: str | Path, events: int = 700, seed: int = 5,
-                 faults: str = "hidden", advisor=None, mode: str = "scenario"):
+                 faults: str = "hidden", advisor=None, mode: str = "scenario", autostart: bool = True):
         self.data_dir, self.dataset_dir = Path(data_dir), Path(dataset_dir)
         self.n_events, self.seed, self.faults, self.advisor = events, seed, faults, advisor
-        if mode not in ("scenario", "day"):
-            raise ValueError("mode must be 'scenario' or 'day'")
+        if mode not in ("scenario", "day", "live"):
+            raise ValueError("mode must be 'scenario', 'day' or 'live'")
         self.mode = mode
         self.scenario_rows: list[dict] = []
         self.runs = RunManager(self)
@@ -51,8 +55,13 @@ class DemoState:
         self.runner = SimulationRunner(lambda: self.sup, AS_OF, 6 * 3600 + 55 * 60)
         if not self._reopen():                      # a saved scenario run is picked up again; nothing is rebuilt
             self.build()
+        self.monitor = None
         if self.mode == "day":
             self.runner.start()
+        elif self.mode == "live":
+            self.monitor = LiveMonitor(self)
+            if autostart:
+                self.monitor.start()
         threading.Thread(target=self._audit_loop, daemon=True, name="audit").start()
 
     # ---------------------------------------------------------------- build / reset
@@ -63,7 +72,13 @@ class DemoState:
             inj = FaultInjector({})
             sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor)
             sup.load_dataset(self.dataset_dir)
-            if self.mode == "scenario":
+            if self.mode == "live":
+                pool = setup_pool(sup, AS_OF, self.seed)
+                if self.faults != "none" and len(pool) >= 7:                    # two scripted agent faults, first call only
+                    inj.script = {(pool[2]["borrower_id"], 1): "CRASH_AFTER_SEND", **{(pool[6]["borrower_id"], n): "LOOP" for n in (1, 2, 3)}}
+                self.day = None
+                self.runner.position = 86400 - 60
+            elif self.mode == "scenario":
                 self.scenario_rows = scenario.build(sup, AS_OF, inj)      # the 15 demo events, published, not processed
                 self.day = None
                 self.runner.position = 86400 - 60                         # "today" is the whole dataset day; no clock runs
@@ -88,24 +103,25 @@ class DemoState:
         """Restart safety for the demo: if the previous run's database is on disk, reopen it (events already run, steps,
         messages, checkpoints) instead of rebuilding. Only 'Reset demo' starts from scratch."""
         db_file = self.data_dir / "orchestrator.db"
-        if self.mode != "scenario" or not db_file.exists():
+        if self.mode == "day" or not db_file.exists():
             return False
         probe = Database(db_file, read_only=True)
         try:
-            n = probe.one("SELECT COUNT(*) n FROM demo_event")["n"]
+            n = probe.one("SELECT COUNT(*) n FROM " + ("monitor_pool" if self.mode == "live" else "demo_event"))["n"]
             ds = probe.one("SELECT COUNT(*) n FROM ds_account")["n"]
         except Exception:  # noqa: BLE001 - an older or damaged file: rebuild
             return False
         finally:
             probe.close()
-        if n != len(scenario.SPECS) or ds == 0:
+        if n != (POOL if self.mode == "live" else len(scenario.SPECS)) or ds == 0:
             return False
         with self.lock:
             inj = FaultInjector({})
             sup = Supervisor(data_dir=self.data_dir, injector=inj, advisor=self.advisor)
             sup.ctx.engine = D12Policy(sup.ctx.db, sup.ctx.contacts, sup.ctx.borrowers, sup.ctx.registry, sup.ctx.policy)
-            self.scenario_rows = [dict(r) for r in sup.ctx.db.query("SELECT * FROM demo_event ORDER BY seq")]
-            scenario.restore_faults(sup, inj, self.scenario_rows)
+            if self.mode == "scenario":
+                self.scenario_rows = [dict(r) for r in sup.ctx.db.query("SELECT * FROM demo_event ORDER BY seq")]
+                scenario.restore_faults(sup, inj, self.scenario_rows)
             sup.recover_on_start()                    # finishes any event that was mid-run when the process stopped
             self.day = None
             self.runner.position = 86400 - 60
@@ -122,23 +138,15 @@ class DemoState:
         self.sup = sup
 
     def reset(self) -> None:
-        """Reset clears the walkthrough only. Saved real journey runs (and their unseen notices) are carried over."""
-        keep = []
-        if self.mode == "scenario":
-            try:
-                keep = [dict(r) for r in self.reader.query("SELECT * FROM journey_run")]
-            except Exception:  # noqa: BLE001
-                keep = []
+        """Rebuild from scratch. Only the walkthrough's own database is ever reset from the UI."""
         self.build()
-        for r in keep:
-            r.pop("id", None)
-            cols = ",".join(r)
-            self.sup.ctx.db.execute(f"INSERT OR REPLACE INTO journey_run({cols}) VALUES ({','.join('?' * len(r))})", tuple(r.values()))
 
     # ---------------------------------------------------------------- time
     def sim_now(self) -> datetime:
         """The time the dashboard's queries are 'as of'. Clamped to 23:59 of the simulated date, so that when the
         day ends, 'today' still means the day that was just simulated (its caps and budgets stay visible)."""
+        if self.mode == "live":
+            return datetime.now().replace(microsecond=0)
         from orchestrator.ui.runner import DAY
         return datetime.fromisoformat(self.runner.iso(min(self.runner.position, DAY - 60)))
 
@@ -159,7 +167,8 @@ class DemoState:
     # ---------------------------------------------------------------- snapshots for the API
     def overview(self, light: bool = False) -> dict:
         nums = views.overview_numbers(self.reader, self.sup.ctx, self.sup.injector, self.audit)
-        out = {**nums, "sim_clock": self.runner.clock() if self.mode == "day" else None, "timeline": views.timeline(self.reader),
+        out = {**nums, "sim_clock": self.runner.clock() if self.mode == "day" else None,
+               "monitor": self.monitor.status() if self.monitor else None, "timeline": views.timeline(self.reader),
                "rules_cited": views.rules_cited(self.reader), "channel_mix": views.channel_mix(self.reader)}
         if not light:
             out["recent_decisions"] = views.recent_events(self.reader, 40)

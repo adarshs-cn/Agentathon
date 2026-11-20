@@ -10,8 +10,8 @@ const [, , outDirArg, widthArg, heightArg] = process.argv;
 const outDir = outDirArg || join(tmpdir(), 'e2e-shots');
 const width = +(widthArg || 1440);
 const height = +(heightArg || 900);
-const API = 'http://127.0.0.1:8001';
-const UI = 'http://127.0.0.1:5173/';
+const API = process.env.E2E_API || 'http://127.0.0.1:8001';
+const UI = process.env.E2E_UI || 'http://127.0.0.1:5173/';
 mkdirSync(outDir, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

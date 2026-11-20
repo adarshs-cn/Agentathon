@@ -25,6 +25,7 @@ export const api = {
   budgets: () => request('/api/budgets'),
   decisions: (params = {}) => request(`/api/decisions?${new URLSearchParams(params)}`),
   accountsSearch: (q) => request(`/api/accounts/search?q=${encodeURIComponent(q)}`),
+  monitorControl: (action) => request(`/api/monitor/${action}`, { method: 'POST' }),
   notifications: () => request('/api/notifications'),
   notificationsSeen: (ids) => request('/api/notifications/seen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_ids: ids || [] }) }),
   journeys: (params = {}) => request(`/api/journeys?${new URLSearchParams(params)}`),

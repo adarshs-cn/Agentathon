@@ -129,6 +129,23 @@ class Database:
                 self.conn.execute(f'ALTER TABLE contact_log ADD COLUMN {col} TEXT')
             except sqlite3.OperationalError:
                 pass
+        self._upgrade_journey_run()
+
+    def _upgrade_journey_run(self) -> None:
+        """An earlier build made journey_run with a 'source' column and no fault columns. Rebuild it in the current
+        shape, keeping the real runs and dropping walkthrough rows (those are no longer saved)."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(journey_run)")}
+        if not cols or "fault" in cols:
+            return
+        old = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM journey_run" + (" WHERE source='real'" if "source" in cols else ""))]
+        self.conn.execute("DROP TABLE journey_run")
+        self.conn.executescript(SCHEMA)
+        keep = ("event_id", "borrower_id", "event_type", "event_time", "outcome", "channel", "role", "owner_after",
+                "rule_ids", "summary", "started_wall", "finished_wall", "duration_ms", "attempts")
+        for r in old:
+            self.conn.execute(f"INSERT OR IGNORE INTO journey_run({','.join(keep)}) VALUES ({','.join('?' * len(keep))})",
+                              tuple(r.get(k) for k in keep))
 
     def execute(self, sql: str, params: tuple = ()) -> int:
         """Run a write; returns the number of rows changed."""

@@ -123,17 +123,17 @@ export default function Overview() {
             sub={`Target under ${latency.target_ms} ms`} accent={latency.samples && !latencyOk ? tokens.statusFault : undefined} onClick={() => setTile('latency')} />
         </Box>
         <Box>
-          <StatTile icon={GroupsIcon} label="Borrowers handled" value={counters.borrowers_handled} sub={`${done} of ${total} demo events run`} onClick={() => setTile('borrowers')} />
+          <StatTile icon={GroupsIcon} label="Borrowers handled" value={counters.borrowers_handled} sub={data.monitor ? `${data.monitor.pool_handled} of ${data.monitor.pool_size} watched borrowers` : `${done} of ${total} demo events run`} onClick={() => setTile('borrowers')} />
         </Box>
         <Box>
-          <StatTile icon={CallMadeIcon} label="Messages sent" value={counters.contacts_made} onClick={() => setTile('contacts')} />
+          <StatTile icon={CallMadeIcon} label="Messages sent" value={counters.contacts_made} sub={data.monitor ? 'Real borrowers only' : undefined} onClick={() => setTile('contacts')} />
         </Box>
         <Box>
           <StatTile icon={BlockIcon} label="Stopped or waiting" value={counters.blocked_or_deferred} sub="Click to see why" accent={tokens.statusDegraded} onClick={() => setTile('blocked')} />
         </Box>
       </Box>
 
-      <Section title="Workflow" subtitle={item ? item.note : 'Loading the demo events…'}>
+      <Section title="Workflow walkthrough" subtitle={`Demo only: runs here never change the numbers above. ${item ? item.note : 'Loading the demo events…'}`}>
         <Stack spacing={2}>
           <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
             <EventPicker items={list} value={run.eventId} onChange={pick} disabled={running} />

@@ -15,6 +15,18 @@ def _demo_rows(db) -> list[dict]:
         "LEFT JOIN ds_person p ON p.borrower_id=d.borrower_id ORDER BY d.seq")]
 
 
+def real_rows(db, limit: int = 300) -> list[dict]:
+    """Real (monitored) events, newest first, in the same shape as the walkthrough rows."""
+    rows = [dict(r) for r in db.query(
+        "SELECT q.seq, q.event_id, q.account_id AS borrower_id, q.type AS event_type, q.status AS q_status, "
+        "q.outcome AS q_outcome, q.event_time, p.name_masked FROM event_queue q "
+        "LEFT JOIN ds_person p ON p.borrower_id=q.account_id WHERE q.event_id NOT LIKE 'demo-%' "
+        "ORDER BY q.seq DESC LIMIT ?", (limit,))]
+    for r in rows:
+        r["label"] = reasons.EVENT_WORDS.get(r["event_type"], r["event_type"])
+    return rows
+
+
 def _contact(db, event_id: str, borrower: str):
     r = db.one("SELECT channel, role, status, message_json FROM contact_log WHERE idem_key=?", (f"{borrower}|{event_id}",))
     return dict(r) if r else None
@@ -42,8 +54,9 @@ def scenario(db, running_event: str | None = None) -> dict:
             "done": sum(1 for i in items if i["status"] == "done"), "total": len(items)}
 
 
-def drilldown(db, injector, audit: dict, tile: str) -> dict | None:
-    rows = _demo_rows(db)
+def drilldown(db, injector, audit: dict, tile: str, rows: list[dict] | None = None, latency: dict | None = None,
+              live: bool = False) -> dict | None:
+    rows = _demo_rows(db) if rows is None else rows
     done = [r for r in rows if r["q_status"] in ("DONE", "FAILED")]
 
     def base(r, **extra):
@@ -58,7 +71,7 @@ def drilldown(db, injector, audit: dict, tile: str) -> dict | None:
                 m = json.loads(c["message_json"]) if c["message_json"] else {}
                 out.append(base(r, channel=reasons.CHANNEL_WORDS.get(c["channel"], c["channel"]),
                                 agent=reasons.ROLE_WORDS.get(c["role"], c["role"]), message=(m.get("body") or "")[:90]))
-        return {"tile": tile, "title": "Messages sent", "empty": "Nothing has been sent yet. Run an event.",
+        return {"tile": tile, "title": "Messages sent", "empty": "Nothing has been sent yet. The monitor sends within contact hours." if live else "Nothing has been sent yet. Run an event.",
                 "columns": [["event", "Event"], ["borrower", "Borrower"], ["agent", "Agent"], ["channel", "Channel"],
                             ["message", "Message"]], "rows": out}
     if tile == "blocked":
@@ -92,7 +105,7 @@ def drilldown(db, injector, audit: dict, tile: str) -> dict | None:
                                 .get(fired.get(r["borrower_id"], [""])[0], "Not yet triggered") if happened else "Not yet triggered",
                                 recovered="Yes" if (happened and r["q_outcome"] == "CONTACTED") else ("Pending" if not happened else "No"),
                                 how=reasons.RECOVERY_WORDS.get(act, "") if act else ""))
-        return {"tile": tile, "title": "Faults and recovery", "empty": "No fault is scripted for this scenario.",
+        return {"tile": tile, "title": "Faults and recovery", "empty": "No fault is scripted for the monitored borrowers." if live else "No fault is scripted for this scenario.",
                 "columns": [["event", "Event"], ["fault", "What went wrong"], ["how", "What the supervisor did"],
                             ["recovered", "Recovered"]], "rows": out}
     if tile == "conflicts":
@@ -102,6 +115,12 @@ def drilldown(db, injector, audit: dict, tile: str) -> dict | None:
                 "empty": "None found. Every contact that went out was re-checked against the policy by a separate audit.",
                 "columns": [["borrower", "Borrower"], ["why", "What was wrong"]],
                 "rows": [{"borrower": str(v.get("borrower") or v.get("account_id") or ""), "why": str(v.get("reason") or v)[:140]} for v in det]}
+    if tile == "latency" and live:
+        lat = latency or {}
+        return {"tile": tile, "title": "How fast the supervisor chose an agent", "summary": "The target is under 100 ms.",
+                "empty": "No decisions yet.", "columns": [["event", "Measure"], ["ms", "Time to choose"]],
+                "rows": [{"event": f"{k} ({lat.get('samples', 0)} decisions)" if k == "Median" else k, "borrower": "", "ms": f"{lat.get(v, 0):.1f} ms"}
+                         for k, v in (("Median", "median"), ("Slowest 5%", "p95"), ("Slowest", "max"))] if lat.get("samples") else []}
     if tile == "latency":
         out = []
         for r in rows:
