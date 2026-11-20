@@ -36,9 +36,9 @@ from orchestrator.ui.run import RunManager
 from orchestrator.ui.runner import SimulationRunner
 
 
-<<<<<<< Updated upstream
 POOL = 15
-=======
+
+
 def _agents_override(inj) -> list | None:
     """None keeps the pure stub trio (default_agents); set MT02_REAL_VOICE=1 (after .env is
     loaded, before this is called) to swap in the real Twilio negotiation agent instead of
@@ -49,7 +49,6 @@ def _agents_override(inj) -> list | None:
     from orchestrator.agents.real.negotiation import NegotiationAgent
     from orchestrator.agents.stubs import EmailAgent, WhatsAppAgent
     return [WhatsAppAgent(inj), EmailAgent(inj), NegotiationAgent(inj)]
->>>>>>> Stashed changes
 
 
 class DemoState:

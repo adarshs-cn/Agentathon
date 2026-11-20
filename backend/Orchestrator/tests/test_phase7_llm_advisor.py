@@ -88,13 +88,19 @@ def test_the_key_is_never_written_anywhere_in_the_project():
     import pathlib
     import re
     root = pathlib.Path(__file__).resolve().parent.parent
-    assigned = re.compile(r"(DEEPSEEK|SARVAM)_API_KEY\s*[=:]\s*[\"']?[A-Za-z0-9_\-]{8,}")
+    # [ \t]* not \s*: a blank "SARVAM_API_KEY=" must not swallow the next line ("SARVAM_CONV_MODEL") as if it were a value
+    assigned = re.compile(r"(DEEPSEEK|SARVAM)_API_KEY[ \t]*[=:][ \t]*[\"']?[A-Za-z0-9_\-]{8,}")
     hits = [str(p) for p in root.rglob("*") if p.is_file() and ".venv" not in p.parts
             and "__pycache__" not in p.parts and ".pytest_cache" not in p.parts and p.name != ".env"
             and p.suffix in {".py", ".md", ".txt", ".example", ".ini", ".json", ".yml", ".yaml", ".sh"}
             and assigned.search(p.read_text(errors="ignore"))]
     assert hits == []
-    assert (root / ".env.example").read_text().strip().endswith("DEEPSEEK_API_KEY=")   # the template holds no value
+    # the template holds no secret values (it may list other settings too)
+    tmpl = (root / ".env.example").read_text().splitlines()
+    secret = re.compile(r"^(DEEPSEEK_API_KEY|SARVAM_API_KEY|TWILIO_AUTH_TOKEN|TWILIO_ACCOUNT_SID)=(.*)$")
+    found = [m for m in (secret.match(line.strip()) for line in tmpl) if m]
+    assert any(m.group(1) == "DEEPSEEK_API_KEY" for m in found)
+    assert all(m.group(2).strip() == "" for m in found)
 
 
 # ------------------------------------------------------------------ inside the supervisor
